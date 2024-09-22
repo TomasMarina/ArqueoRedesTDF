@@ -1,0 +1,1000 @@
+Site	MIN age	MAX age	Geological unit
+Barcelona	0	0	Current
+Sanlucar	0	0	Current
+El Portalon Atapuerca	0.006	0.001	Holocene
+Nerja NV2 NV0	0.0065	0.004	Holocene
+Nerja NV3	0.008	0.008	Holocene
+La Ventana	0.012	0.012	Aurelian
+Nerja NV7 NV4	0.0125	0.009	Aurelian
+Terrases de la Riera desl Canyars	0.0396	0.0396	Aurelian
+Teixoneres Cave Level IIa	0.0408	0.03078	Aurelian
+Teixoneres Cave Level IIb	0.0408	0.03078	Aurelian
+Abric Romani Level A	0.0438	0.0426	Aurelian
+Abric Romani Level B	0.0444	0.0438	Aurelian
+Abric Romani Level C	0.0444	0.0438	Aurelian
+Abric Romani Level D	0.0449	0.0444	Aurelian
+Abric Romani Level E	0.0451	0.0449	Aurelian
+Abric Romani Level F	0.0451	0.0449	Aurelian
+Abric Romani Level G	0.0451	0.0449	Aurelian
+Abric Romani Level H	0.0451	0.0449	Aurelian
+Abric Romani Level I	0.0463	0.0451	Aurelian
+Abric Romani Level J	0.0498	0.0493	Aurelian
+Teixoneres Cave Level IIIa	0.051	0.04061	Aurelian
+Teixoneres Cave Level IIIb	0.051	0.04061	Aurelian
+Valdegoba Cave	0.057	0.029	Aurelian
+Cueva del Angel	0.121	0.121	Aurelian
+Los Rincones	0.126	0.011	Aurelian
+Camino Cave	0.13	0.071	Aurelian
+Cova del Rinoceront Level I	0.13	0.071	Aurelian
+Cova del Rinoceront Level II	0.13	0.071	Aurelian
+Cullar Baza 1	0.78	0.78	Galerian
+Vallparadis estacio Layer 7	0.858	0.858	Galerian
+Huescar 1	0.9	0.42	Galerian
+TD6Au	0.9	0.8	Galerian
+TD6inf	0.9	0.8	Galerian
+TD4	0.91	0.91	Galerian
+TDW4	0.91	0.91	Galerian
+Cal Guardiola D7	0.99	0.78	Galerian
+Cueva Victoria	0.99	0.78	Galerian
+Cueva Negra Estrecho rio quipar	1	0.7	Galerian
+El Chaparral Cave	1	1	Villafranchian
+Vallparadis estacio Layer12	1.07	0.99	Villafranchian
+Cal Guardiola D2	1.2	1.1	Villafranchian
+Fuente Nueva 3	1.3	1.3	Villafranchian
+Barranco Leon 2	1.4	1.4	Villafranchian
+Quibas	1.4	1.2	Villafranchian
+Incarcal I	1.5	1.2	Villafranchian
+Venta Micena 2	1.5	1.5	Villafranchian
+Casablanca 1	1.97	1.89	MN17
+Fonelas P1	2	2	MN17
+Fuente Nueva 1	2	2	MN17
+Puebla de Valverde	2.13	1.95	MN17
+Villarroya	2.15	2.13	MN17
+Las Higueruelas	2.76	2.69	MN16
+Pozo de Piedrabuena	3.2	2.5	MN16
+El Rincon 1	3.5	3.43	MN16
+Huelago	3.5	3.43	MN16
+Alcalá del Júcar	4.2	3.2	MN15
+Villalba Alta	4.2	3.2	MN15
+La Gloria 4	4.26	4.19	MN14
+Layna	4.26	4.19	MN15
+Orrios 1	4.3	4.19	MN14
+La Calera	4.65	4.58	MN14
+Peralejos E	4.9	4.2	MN15
+Puerto de la Cadena	4.997	4.896	MN16
+Alcoy Mina	5.31	5.25	MN14
+Arenas del Rey	6.25	6.2	MN13
+Librilla	6.25	6.03	MN13
+Milagros	6.25	6.2	MN13
+Tariego de Cerrato	6.25	6.2	MN13
+Venta del Moro	6.25	6.2	MN13
+La Alberca	6.5	4.9	MN13
+Las Casiones	6.7	6.65	MN13
+Bunker de Valdecebro	6.73	6.44	MN13
+El Arquillo 1	6.94	6.89	MN13
+Valdecebro 3	6.94	6.65	MN13
+Los Mansuetos	7.31	7.26	MN12
+Corral de Lobato	7.4	6.5	MN12
+Valdecebro 5	7.44	7.4	MN12
+Cerro de la Garita	7.7	7.66	MN12
+Concud Barranco	7.7	7.66	MN12
+Las Pedrizas	7.7	7.66	MN12
+Aljezar B	7.99	7.95	MN12
+Ademuz	8.07	8.03	MN12
+Casa del Acero	8.07	6.2	MN12
+Crevillente 15 16	8.07	7.66	MN12
+Los Gargantones	8.07	6.2	MN12
+Masada del Valle 2	8.07	7.66	MN12
+Puente Minero	8.34	8.31	MN11
+Piera	8.46	8.42	MN11
+Vivero de Pinos	8.57	8.53	MN11
+Crevillente 2	8.72	8.68	MN11
+Los Aguanaces	8.8	7.4	MN11
+Peralejos D	8.8	7.4	MN11
+Masia de La Roma 604A	8.87	8.83	MN10
+La Roma 2	8.94	8.9	MN10
+Batallones 1 LLA	9.29	9.25	MN10
+Batallones 1 ULA	9.29	9.25	MN10
+Batallones 10	9.29	9.25	MN10
+Batallones 3	9.29	9.25	MN10
+Masia del Barbo 2B	9.43	9.31	MN10
+Sant Miguel de Taudell	9.46	9.43	MN10
+Batallones 5	9.6	8.8	MN10
+La Cantera	9.6	8.8	MN10
+Masia del Barbo 2A	9.66	9.41	MN10
+El Lugarejo	9.76	9.73	MN9
+Los Valles de Fuentiduena	9.76	9.73	MN9
+Can Llobateres	9.78	9.72	MN9
+Santiga	10.48	10.45	MN9
+Castell de Barbera	10.55	10.55	MN9
+El Firal	10.61	10.58	MN9
+Can Ponsic	10.71	10.68	MN9
+Polinya	10.71	10.19	MN9
+Ballestar	10.87	10.84	MN9
+Can Missert	10.87	10.84	MN7/8
+Masia de La Roma 2	11.01	9.01	MN9
+Nombrevilla 1	11.06	9.98	MN9
+Pedregueras 2A	11.06	9.98	MN9
+Estavar	11.14	11.1	MN9
+Nombrevilla 9	11.19	11.15	MN7/8
+Montejo de la Vega de la Serrezuela	11.2	11.17	MN7/8
+Sant Quirze	11.34	11.31	MN7/8
+Can Mata I	11.55	11.15	MN7/8
+Cerro del Otero	11.82	11.79	MN7/8
+Barranc de Can Vila 1	12.01	11.61	MN7/8
+Nombrevilla 2	12.01	11.61	MN7/8
+Moraleja de Enmedio	12.04	11.31	MN7/8
+Escobosa	12.26	12.22	MN7/8
+Toril 3B	12.5	11	MN7/8
+El Buste	12.6	12.56	MN7/8
+La Ciesma	12.6	12.56	MN7/8
+Toril 3A	12.73	12.42	MN7/8
+Arroyo del Val	13.16	12.58	MN6
+La Barranca	13.16	12.58	MN6
+Paracuellos 3	13.16	12.58	MN6
+Alhambra Tuneles	13.76	13.57	MN6
+Henares 1	13.76	13.57	MN6
+Paracuellos 5	13.76	13.57	MN6
+Puente Vallecas	13.76	13.57	MN5
+Manchones	13.8	12.5	MN6
+Paracuellos 2	13.8	12.5	MN6
+Arroyo del Olivar	14.06	13.8	MN5
+Somosaguas	14.06	13.8	MN5
+Henares 2	14.81	14.09	MN5
+O Donnell	14.81	14.09	MN5
+Estacion Imperial	15.5	14.82	MN5
+Hidroelectrica	15.5	14.82	MN5
+Los Nogales	15.5	14.82	MN5
+Moratines	15.5	14.82	MN5
+PARPeñuelas	15.5	14.82	MN5
+Paseo Acacias	15.5	14.82	MN5
+Puente Toledo	15.5	14.82	MN5
+San Isidro	15.5	14.82	MN5
+La Retama	15.84	15.68	MN5
+Monteagudo	16	13.8	MN5
+Torrijos	16	13.8	MN5
+Artesilla	16.49	15.94	MN4
+Buñol	16.49	15.94	MN4
+Corcoles	16.49	15.94	MN4
+Els Casots	16.49	15.94	MN4
+San Mamet	16.77	16.63	MN4
+Torralba de Ribota	16.9	16	MN4
+Ágreda	17.97	16.99	MN3
+Moli Calopa	17.97	16.99	MN3
+Rubielos de Mora	17.97	16.99	MN3
+Loranca del Campo	19.13	18.02	MN2
+Navarrete del Río	19.13	18.02	MN2
+Nasa 5	19.4	19.1	MN3
+Nasa 1	19.4	19.1	MN3
+Cetina de Aragón	21.62	20.45	MN2
+Valquemado	21.62	20.45	MN2
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
