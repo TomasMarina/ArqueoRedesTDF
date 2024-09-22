@@ -1,0 +1,40 @@
+Metadata for the dataset used in the paper "The reorganization of predator-prey networks over 20  million years explains extinction patterns of mammalian carnivores"
+Author(s): Nascimento, João; Blanco, Fernando; Domingo, M. Soledad; Cantalapiedra, Juan; Pires, Mathias
+
+Code:
+These files include the necessary steps to reproduce the analysis of the paper, in order:
+0. load_data
+1. Iberica_networks
+2. longevity_and_extinction
+3. msm_model
+
+The following files the the folder "data" include the raw data used in the paper: 
+
+age_sites.txt:
+Data file containing the estimated ages for each locality in the dataset. each column represents:
+1. Site: the name of the locality
+2. MIN age: the minimum age of each locality in millions of years.
+3. MAX age: the maximum age of each locality in millions of years
+4. Geological unit: the biozones to which each locality belongs in the Mammal Neogene zones.
+
+communities_iberian.txt:
+Species composition of each locality, in which each species represented by a row and each column represents a locality. 
+If a species is present in a given community, it the entry equals 1, and 0 otherwise.
+
+functional_data.txt:
+Datatable containing taxonomic and functional information for each species.
+columns 1-4: taxonomic classificaiton of each species.
+column 5: body size: estimated species body size in kilograms (Kg)
+column 6: diet: inferred dietary habit of each species (Grazer, browser, frugivore, mixed feeder, carnivore, invertebrate carnivore, hypercarnivore, omnivore or scavenger).
+column 7: locomotion: inferred locomotion mode of each species (Ambulatory, cursorial, scansorial, aquatic or arboreal)
+
+Modules.txt:
+Data file presenting the module to which each locality in the dataset was assinged to in a modularity analysis by Blanco et al. (2021) using the MPO filter described in the methodology.
+It contains 2 columns:
+1. Site: the name of the locality
+2. Module: the module to which the locality was assigned to. 
+ 
+
+The folder "results" contain the results obtained with the analysis. 
+
+
