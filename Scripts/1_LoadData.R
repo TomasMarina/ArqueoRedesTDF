@@ -4,15 +4,25 @@
 
 
 # Load packages -----------------------------------------------------------
-library(XLConnect)
-
+library(tidyverse)
+library(readxl)
 
 
 # Load data ---------------------------------------------------------------
 ## Species localities
-communities <- 
-
+communities <- readxl::read_excel("datos/Species localities - TDF.xlsx")
+abundance <- as.data.frame(colSums(communities[,2:143]))
+names(abundance) <- "Abundance"
+abundance$Site <- rownames(abundance)
 
 ## Species traits
+traits <- readxl::read_excel("datos/Species traits - TDF.xlsx")
 
 ## Age localities
+ages <- readxl::read_excel("datos/Age localities - TDF.xlsx")
+
+
+# Save results ------------------------------------------------------------
+save(communities, abundance, traits, ages,
+     file = "datos/tidy_data.Rdata")
+
