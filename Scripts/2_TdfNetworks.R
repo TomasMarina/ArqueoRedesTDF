@@ -131,8 +131,8 @@ comm_spp_trait <- comm_full_pivot %>%
   drop_na(FeedingStrategy, BodySize_max)
 
 ### Filter localities with spp abundance > 0
-#loc_comp <- unique(comm_spp_trait$Locality)
-loc_comp <- "RC1_6284"
+loc_comp <- unique(comm_spp_trait$Locality)
+#loc_comp <- "RC1_6284"
 carn_comp <- carn_traits[loc_comp]
 herb_comp <- herb_traits[loc_comp]
 
@@ -152,10 +152,26 @@ for (i in 1:length(loc_comp)){  #running for all localities
   }
 }
 names(results) = names(carn_comp)
+# Shows interaction matrix, predators in row, prey in col
+results[["CN26_4000"]]
 
-# Show interaction matrix, predators in row, prey in col
-results[[1]]
+## Interaction list ----
+class(results[["CN26_4000"]])
 
+results_df <- lapply(results, function(x) as.data.frame(x))
+
+my_list <- Map(cbind, results_df, Locality = names(results_df))
+
+int_df <- my_list[["CN26_4000"]] %>% 
+  tibble::rownames_to_column(var = "Predator") %>% 
+  tidyr::pivot_longer(cols = 2:length(my_list[["CN26_4000"]]), names_to = "Prey", values_to = "Int_prob") %>%
+  dplyr::select(Prey, Predator, Int_prob, Locality)
+
+
+
+test <- purrr::map_df(my_list, data.frame, .id = "Locality") #%>% 
+  tibble::rownames_to_column(var = "Predator") %>% 
+  tidyr::pivot_longer(!Predator, names_to = "Prey", values_to = "Int_prob")
 
 # Network properties ------------------------------------------------------
 ## Predator-prey ratio ----
