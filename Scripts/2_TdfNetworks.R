@@ -156,22 +156,17 @@ names(results) = names(carn_comp)
 results[["CN26_4000"]]
 
 ## Interaction list ----
-class(results[["CN26_4000"]])
-
+### Tidy data
 results_df <- lapply(results, function(x) as.data.frame(x))
-
 my_list <- Map(cbind, results_df, Locality = names(results_df))
-
-int_df <- my_list[["CN26_4000"]] %>% 
+int_df3 <- my_list[["CN29_4700"]] %>% 
   tibble::rownames_to_column(var = "Predator") %>% 
-  tidyr::pivot_longer(cols = 2:length(my_list[["CN26_4000"]]), names_to = "Prey", values_to = "Int_prob") %>%
+  tidyr::pivot_longer(cols = 2:length(my_list[["CN29_4700"]]), names_to = "Prey", values_to = "Int_prob") %>%
   dplyr::select(Prey, Predator, Int_prob, Locality)
+df_list <- list(int_df, int_df2, int_df3)
 
+all_int <- bind_rows(df_list)
 
-
-test <- purrr::map_df(my_list, data.frame, .id = "Locality") #%>% 
-  tibble::rownames_to_column(var = "Predator") %>% 
-  tidyr::pivot_longer(!Predator, names_to = "Prey", values_to = "Int_prob")
 
 # Network properties ------------------------------------------------------
 ## Predator-prey ratio ----
@@ -257,11 +252,9 @@ all_props <- prop %>%
   dplyr::left_join(mean_degree_carn)
 
 
+# Save results ------------------------------------------------------------
+save(comm_spp_trait, all_int, all_props,
+     file = "results/preliminaryres_250924.Rdata")
 
-
-
-
-
-
-
-
+write.csv(all_int, file = "results/InteractionProbability.csv")
+write.csv(all_props, file = "results/NetworkProperties.csv")
