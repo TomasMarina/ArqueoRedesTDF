@@ -5,7 +5,10 @@
 
 # Load packages -----------------------------------------------------------
 library(tidyverse)
-
+library(igraph)
+library(ggplot2)
+library(bipartite)
+require(ggpubr)
 
 # Load data ---------------------------------------------------------------
 load("datos/tidy_data.Rdata")
@@ -152,6 +155,96 @@ names(results) = names(carn_comp)
 
 # Show interaction matrix, predators in row, prey in col
 results[[1]]
+
+
+# Network properties ------------------------------------------------------
+## Predator-prey ratio ----
+prop <- matrix(ncol=2,nrow=length(loc_comp))
+for (i in 1:length(loc_comp)){
+  prop[i,1]=names(results[i])
+  if (!is.null(results[[i]])){
+    prop[i,2]=nrow(results[[i]])/ncol(results[[i]])
+  }
+}
+
+prop <- as.data.frame(prop)
+names(prop) <- c("Locality", "PPR")
+### Include time data
+# prop = merge(prop,ages)
+# prop$age = (prop$MIN.age+prop$MAX.age)/2
+# prop = merge(prop,riq)
+# prop = merge(prop,modules, all.x=T)
+
+## Connectance ----
+conec <- matrix(nrow=length(loc_comp), ncol=2)
+for (i in 1:length(loc_comp)){
+  conec[i,1] = names(results[i])
+  if (!is.null(results[[i]])){
+    f = as.matrix(results[[i]])
+    if (nrow(f)>1&ncol(f)>1){
+      conec[i,2] = conec[i,2]=sum(results[[i]]/(ncol(results[[i]])*nrow(results[[i]])))
+    }
+  }
+}
+
+conec <- as.data.frame(conec)
+names(conec) <- c("Locality", "Connectance")
+conec$Connectance <- as.numeric(conec$Connectance)
+### Include time data
+# conec = merge(conec,ages)
+# conec$age = (conec$MIN.age+conec$MAX.age)/2
+# conec = merge(conec,riq)
+# conec = merge(conec,modules, all.x=T)
+
+## Interaction diversity ----
+div <- matrix(nrow=length(loc_comp), ncol=2)
+for (i in 1:length(loc_comp)){
+  div[i,1] = names(results[i])
+  if (!is.null(results[[i]])){
+    f = as.matrix(results[[i]])
+    if (nrow(f)>1&ncol(f)>1){
+      
+      div[i,2] = diversity(as.numeric(results[[i]],index="shannon"))
+    }
+  }
+}
+
+div <- as.data.frame(div)
+names(div) <- c("Locality", "Diversity")
+div$Diversity <- as.numeric(div$Diversity)
+### Include time data
+# div=merge(div,ages)
+# div$age=(div$MIN.age+div$MAX.age)/2
+# div=merge(div,riq)
+# div=merge(div,modules, all.x=T)
+
+## Mean degree ----
+mean_degree_carn <- matrix(ncol=2,nrow=length(loc_comp))
+for (i in 1:length(loc_comp)){
+  mean_degree_carn[i,1]=names(results)[i]
+  if (!is.null(results[[i]])){
+    mean_degree_carn[i,2]=mean(rowSums(results[[i]]))}
+}
+mean_degree_carn <- as.data.frame(mean_degree_carn)
+names(mean_degree_carn) <- c("Locality", "mean_degree_carn")
+mean_degree_carn$mean_degree_carn <- as.numeric(mean_degree_carn$mean_degree_carn)
+### Include time data
+# mean_degree_carn = merge(mean_degree_carn,ages)
+# mean_degree_carn$age = (mean_degree_carn$MIN.age+mean_degree_carn$MAX.age)/2
+# mean_degree_carn = merge(mean_degree_carn,riq)
+# mean_degree_carn = merge(mean_degree_carn,modules, all.x=T)
+
+## All ----
+all_props <- prop %>% 
+  dplyr::left_join(conec) %>% 
+  dplyr::left_join(div) %>% 
+  dplyr::left_join(mean_degree_carn)
+
+
+
+
+
+
 
 
 
