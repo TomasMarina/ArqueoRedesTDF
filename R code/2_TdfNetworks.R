@@ -2,74 +2,72 @@
 # Authors: Fernando C. Santiago, Ulises Balza & Tomás I. Marina
 # Script #2: Inferring consumer-resource networks
 
-
 # Load packages -----------------------------------------------------------
 library(tidyverse)
-library(igraph)
-library(ggplot2)
-library(bipartite)
-require(ggpubr)
+# library(igraph) # Not used in this script yet
+# library(bipartite) # Not used in this script yet
 
 # Load data ---------------------------------------------------------------
-load("datos/tidy_data.Rdata")
+load("data - Santiago2025/tidy_data_180725.Rdata")
 
 
 # Community data frames ---------------------------------------------------
-## Discard uncompleted localities
-comm_full <- communities %>% 
-  dplyr::select(where(~!any(is.na(.))))
+
+## Discard localities with NA values (more robust method)
+# This keeps only the columns that are complete cases.
+comm_full <- communities %>%
+  select(where(~!any(is.na(.))))
 
 ## Classify species by feeding strategy
-carn <- traits[traits$FeedingStrategy == "Carnivore",]
-herb <- traits[traits$FeedingStrategy != "Carnivore",]
+carn_species <- traits %>%
+  filter(FeedingStrategy == "Carnivore") %>%
+  pull(TrophicSpecies) # pull() is a clean way to get a single column as a vector
 
-carn_species <- traits[traits$FeedingStrategy == "Carnivore",]$TrophicSpecies
-herb_species <- traits[traits$FeedingStrategy != "Carnivore",]$TrophicSpecies
+herb_species <- traits %>%
+  filter(FeedingStrategy != "Carnivore") %>%
+  pull(TrophicSpecies)
 
-## Create community data frames by locality
-occ_carn <- communities[communities$TrophicSpecies %in% carn_species,]
-occ_herb <- communities[communities$TrophicSpecies %in% herb_species,]
+## Create community data frames based on the filtered species lists
+# The first column is 'TrophicSpecies', so we keep it.
+occ_carn <- comm_full %>% filter(TrophicSpecies %in% carn_species)
+occ_herb <- comm_full %>% filter(TrophicSpecies %in% herb_species)
 
-communities_carn = list()
-for (i in 1:142){  #length(communities)-1
-  k = occ_carn[occ_carn[,i+1] > 0,]
-  communities_carn[[i]] = k$TrophicSpecies
-}
-communities_carn
-names(communities_carn) = names(occ_carn[2:143])
+# --- CORRECTED & SIMPLIFIED LOOPS ---
 
-communities_herb = list()
-for (i in 1:142){
-  k = occ_herb[occ_herb[,i+1] > 0,]
-  communities_herb[[i]] = k$TrophicSpecies
-}
-communities_herb
-names(communities_herb) = names(communities_carn)  #names(occ_herb[2:143])
+# Get the list of locality names to iterate over
+locality_names <- names(comm_full)[-1] # Exclude the 'TrophicSpecies' column
 
-## Include trait data in community by locality
-herb_traits = list()  # herbivores
-for (i in 1:length(communities_herb)){
-  k = as.data.frame(communities_herb[[i]])
-  names(k)="TrophicSpecies"
-  data = merge(k, traits)
-  data = data[c("TrophicSpecies","BodySize_max","FeedingStrategy")]
-  #names(data) = c("TrophicSpecies","BodySize_max","FeedingStrategy")
-  herb_traits[[i]] = data
-}
-names(herb_traits) = names(communities_herb)
+## Create list of carnivore species present at each locality
+communities_carn <- map(locality_names, ~{
+  occ_carn %>%
+    filter(.data[[.x]] > 0) %>% # Use .data[[]] to access column by name
+    pull(TrophicSpecies)
+}) %>%
+  set_names(locality_names) # Set the names of the list elements
 
-carn_traits = list()  # carnivores
-for (i in 1:length(communities_carn)){
-  k = as.data.frame(communities_carn[[i]])
-  names(k) = "TrophicSpecies"
-  data = merge(k, traits)
-  data = data[c("TrophicSpecies","BodySize_max","FeedingStrategy")]
-  #data = data[data$locomotion != "aquatic",]
-  #data = data[data$body.size > 10, ]
-  #names(data) = c("TrophicSpecies","BodySize_max","FeedingStrategy")
-  carn_traits[[i]] = data
-}
-names(carn_traits) = names(communities_carn)
+## Create list of herbivore species present at each locality
+communities_herb <- map(locality_names, ~{
+  occ_herb %>%
+    filter(.data[[.x]] > 0) %>%
+    pull(TrophicSpecies)
+}) %>%
+  set_names(locality_names)
+
+## Include trait data for each locality's herbivore list
+herb_traits <- map(communities_herb, ~{
+  tibble(TrophicSpecies = .x) %>% # Create a tibble from the species vector
+    left_join(traits, by = "TrophicSpecies") %>%
+    select(TrophicSpecies, BodySize_max, FeedingStrategy)
+})
+
+## Include trait data for each locality's carnivore list
+carn_traits <- map(communities_carn, ~{
+  tibble(TrophicSpecies = .x) %>%
+    left_join(traits, by = "TrophicSpecies") %>%
+    select(TrophicSpecies, BodySize_max, FeedingStrategy)
+})
+
+print("Script finished successfully! Community lists by feeding strategy created.")
 
 
 # Network model -----------------------------------------------------------
@@ -256,5 +254,5 @@ all_props <- prop %>%
 save(comm_spp_trait, all_int, all_props,
      file = "results/preliminaryres_250924.Rdata")
 
-write.csv(all_int, file = "results/InteractionProbability.csv")
-write.csv(all_props, file = "results/NetworkProperties.csv")
+# write.csv(all_int, file = "results/InteractionProbability.csv")
+# write.csv(all_props, file = "results/NetworkProperties.csv")
