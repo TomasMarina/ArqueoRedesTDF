@@ -1,5 +1,5 @@
 # R script for "Ancient consumer-resource networks in Tierra del Fuego"
-# Authors: Ulises Balza, Fernando Santiago & Tomás I. Marina
+# Authors: Fernando C. Santiago, Ulises Balza & Tomás I. Marina
 # Script #1: Load data
 
 
