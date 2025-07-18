@@ -1,7 +1,7 @@
 # Arqueological food webs in Tierra del Fuego
 
 ## Objective
-Reconstruct the ancient consumer-resource networks in Tierra del Fuego.
+Reconstruct ancient consumer-resource interactions in Tierra del Fuego.
 
 ## Authors
-Ulises Balza, Fernando Santiago y Tomás I. Marina
+Fernando C. Santiago, Ulises Balza & Tomás I. Marina
