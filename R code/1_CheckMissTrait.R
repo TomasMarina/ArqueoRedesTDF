@@ -1,12 +1,18 @@
-# Load necessary packages
+# R script for "Ancient consumer-resource networks in Tierra del Fuego"
+# Authors: Fernando C. Santiago, Ulises Balza & Tomás I. Marina
+# Script #1.1: Check missing traits
+
+# Load packages -----------------------------------------------------------
+
 library(tidyverse)
 
-# Load your initial data
-# Make sure the file path is correct
+
+# Load data ---------------------------------------------------------------
+
 load("data - Santiago2025/tidy_data_180725.Rdata")
 
-# --- Data Validation Step ---
 
+# Check missing traits ----------------------------------------------------
 # 1. Get a unique list of all species with an abundance > 0 across all localities
 species_in_communities <- communities %>%
   # Ensure the first column is named 'TrophicSpecies' for consistency
