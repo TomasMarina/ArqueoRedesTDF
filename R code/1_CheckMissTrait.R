@@ -11,7 +11,7 @@ library(writexl)
 
 # Loada data --------------------------------------------------------------
 
-load("data - Santiago2025/tidy_data_180725.Rdata")
+load("data - Santiago2025/tidy_data_290825.Rdata")
 
 
 # Identify missing species ------------------------------------------------

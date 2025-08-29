@@ -10,7 +10,7 @@ library(readxl)
 
 # Load data ---------------------------------------------------------------
 ## Species localities ----
-communities <- readxl::read_excel("data - Santiago2025/Species localities - TDF.xlsx")
+communities <- readxl::read_excel("data - Santiago2025/Species localities - TDF_290825.xlsx")
 
 # Convert all species columns to numeric to prevent errors
 communities <- communities %>%
@@ -22,7 +22,7 @@ names(abundance) <- "Abundance"
 abundance$Site <- colnames(communities[,2:65])
 
 ## Species traits ----
-traits <- readxl::read_excel("data - Santiago2025/Species traits - TDF.xlsx")
+traits <- readxl::read_excel("data - Santiago2025/Species traits - TDF_290825.xlsx")
 
 ## Age localities ----
 ages <- readxl::read_excel("data - Santiago2025/Age localities - TDF.xlsx")
@@ -31,4 +31,4 @@ ages <- readxl::read_excel("data - Santiago2025/Age localities - TDF.xlsx")
 # Save results ------------------------------------------------------------
 
 save(communities, abundance, traits, ages,
-     file = "data - Santiago2025/tidy_data_180725.Rdata")
+     file = "data - Santiago2025/tidy_data_290825.Rdata")
