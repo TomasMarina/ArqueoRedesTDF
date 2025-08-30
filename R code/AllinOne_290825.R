@@ -30,12 +30,12 @@ library(readxl)
 # --- Load Species Localities Data ---
 # This file contains the abundance of each species at each archaeological site.
 # We read it directly from the Excel file.
-localities_raw <- read_excel("data/Species localities - TDF_290825.xlsx")
+localities_raw <- read_excel("data - Santiago2025/Species localities - TDF_290825.xlsx")
 
 # --- Load Species Trait Data ---
 # This file contains biological traits for each species, like body size.
 # We specify the sheet name 'traits' to ensure we read the correct data.
-traits_raw <- read_excel("data/Species traits - TDF_290825.xlsx", sheet = "traits")
+traits_raw <- read_excel("data - Santiago2025/Species traits - TDF_290825.xlsx", sheet = "traits")
 
 
 # -----------------------------------------------------------------------------
@@ -268,4 +268,3 @@ print(head(final_interaction_df))
 # --- Optional: Save Results ---
 # You can uncomment the line below to save the final data frame to a CSV file.
 # write_csv(final_interaction_df, "ancient_foodweb_interactions.csv")
-
