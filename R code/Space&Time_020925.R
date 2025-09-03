@@ -1,9 +1,9 @@
 # -----------------------------------------------------------------------------
 #
 # R SCRIPT FOR RECONSTRUCTING ANCIENT CONSUMER-RESOURCE NETWORKS
-# Final version: Includes spatio-temporal context (using categorical time),
-# habitat filtering, removal of cannibalism, and saves final plots to a
-# multi-page PDF file.
+# Definitive Final Version: This version uses a robust, two-step method for
+# creating graph components that prevents data mismatches, and includes the
+# final polished highlighting and unified legend.
 #
 # -----------------------------------------------------------------------------
 
@@ -19,10 +19,16 @@ library(tidyverse)
 library(readxl)
 # The 'igraph' package is the primary tool for network analysis in R.
 library(igraph)
+# The 'tidygraph' package provides tools to work with graph objects cleanly.
+library(tidygraph)
 # The 'ggraph' package is an extension of ggplot2 for plotting networks.
 library(ggraph)
 # The 'ggrepel' package is used for non-overlapping text labels.
 library(ggrepel)
+# The 'patchwork' package is used to combine separate ggplots into one figure.
+library(patchwork)
+# The 'viridis' package is required to generate the viridis color palette.
+library(viridis)
 
 
 # -----------------------------------------------------------------------------
@@ -33,9 +39,9 @@ library(ggrepel)
 # ASSUMPTION: The script assumes your .xlsx files are in a 'data' sub-folder.
 # To make this script run, please create a folder named 'data' in the same
 # directory as the script, and place your Excel files inside it.
-localities_raw <- read_excel("data - Santiago2025/Species localities - TDF - 030925.xlsx")
-traits_raw <- read_excel("data - Santiago2025/Species traits - TDF - 030925.xlsx", sheet = "traits")
-ages_raw <- read_excel("data - Santiago2025/Age localities - TDF - 030925.xlsx")
+localities_raw <- read_excel("data/Species localities - TDF - 030925.xlsx")
+traits_raw <- read_excel("data/Species traits - TDF - 030925.xlsx", sheet = "traits")
+ages_raw <- read_excel("data/Age localities - TDF - 030925.xlsx")
 
 
 # -----------------------------------------------------------------------------
@@ -75,7 +81,7 @@ traits_df <- traits_raw %>%
 
 # --- Tidy the Age and Spatial Data ---
 ages_df <- ages_raw %>%
-  select(Locality, Geological_ages, Region)
+  select(Locality, Geological_ages, Biome = Region_col)
 
 
 # -----------------------------------------------------------------------------
@@ -164,77 +170,102 @@ final_interaction_df <- interaction_list %>%
   left_join(ages_df, by = "Locality") %>%
   filter(Predator != Prey) %>%
   filter(Int_prob > 0) %>%
-  select(Locality, Region, Geological_ages, Predator, Prey, Int_prob) %>%
-  arrange(Region, Geological_ages, Locality, Predator, desc(Int_prob))
+  select(Locality, Biome, Geological_ages, Predator, Prey, Int_prob) %>%
+  arrange(Biome, Geological_ages, Locality, Predator, desc(Int_prob))
 
 
 # -----------------------------------------------------------------------------
-# PART 7: VISUALIZATION OF NETWORK EVOLUTION AND EXPORT TO PDF
-# Create a separate, chronologically-ordered plot for each region and
-# save them all to a single PDF file.
+# PART 7: VISUALIZATION OF NETWORK EVOLUTION BY BIOME
+# Creates a final, polished plot for each biome with a single legend and
+# strong highlighting for the Homo sapiens node and its interactions.
 # -----------------------------------------------------------------------------
 
 # --- Step 1: Prepare data for plotting ---
-
-# Define the correct chronological order for the geological ages.
 age_levels <- c("Pleistoceno final", "Holoceno medio", "Holoceno final", "Histórico")
-
-# Prepare the final data frame for plotting.
 plotting_df <- final_interaction_df %>%
-  filter(!is.na(Region) & !is.na(Geological_ages)) %>%
+  filter(!is.na(Biome) & !is.na(Geological_ages)) %>%
+  group_by(Biome, Geological_ages, Predator, Prey) %>%
+  summarise(Int_prob = mean(Int_prob, na.rm = TRUE), .groups = 'drop') %>%
   mutate(Geological_ages = factor(Geological_ages, levels = age_levels))
 
-# --- Step 2: Open PDF device and loop through regions to create plots ---
+# --- Step 2: Open PDF device and loop through biomes to create composite plots ---
+pdf("Network_Evolution_by_Biome_Polished.pdf", width = 15, height = 8.5)
+biomes_to_plot <- unique(plotting_df$Biome)
 
-# Open the PDF file device. All subsequent plots will be saved here.
-# We use a landscape orientation (width > height) which is good for faceted plots.
-pdf("Network_Evolution_by_Region.pdf", width = 11, height = 8.5)
-
-# Get the unique regions to loop over.
-regions_to_plot <- unique(plotting_df$Region)
-
-for (current_region in regions_to_plot) {
+for (current_biome in biomes_to_plot) {
   
-  region_data <- plotting_df %>%
-    filter(Region == current_region)
+  biome_data <- plotting_df %>%
+    filter(Biome == current_biome)
   
-  if (nrow(region_data) > 0) {
-    
-    edges_for_plotting <- region_data %>%
-      select(from = Predator, to = Prey, weight = Int_prob, Geological_ages)
-    
-    vertices_for_plotting <- tibble(name = unique(c(region_data$Predator, region_data$Prey))) %>%
-      left_join(traits_df %>% select(TrophicSpecies, Guild), by = c("name" = "TrophicSpecies")) %>%
-      mutate(type = Guild == "Consumer")
-    
-    region_graph <- graph_from_data_frame(
-      d = edges_for_plotting,
-      vertices = vertices_for_plotting,
-      directed = TRUE
+  plot_list <- age_levels %>%
+    map(~ {
+      age_data <- biome_data %>% filter(Geological_ages == .x)
+      
+      if (nrow(age_data) == 0) {
+        return(ggplot() + theme_void() + ggtitle(.x))
+      }
+      
+      # Prepare the complete edge data frame with all attributes
+      edges_for_graph <- age_data %>%
+        mutate(
+          from = paste0(Predator, "_C"), 
+          to = paste0(Prey, "_R"),
+          is_human_interaction = (Predator == "Homo_sapiens" | Prey == "Homo_sapiens")
+        )
+      
+      # Prepare the complete vertex data frame
+      vertices <- tibble(name = unique(c(edges_for_graph$from, edges_for_graph$to))) %>%
+        mutate(
+          short_name = str_remove(name, "_[CR]$"),
+          Guild = if_else(str_ends(name, "_C$"), "Consumer", "Resource"),
+          type = Guild == "Consumer",
+          is_human_node = (short_name == "Homo_sapiens")
+        )
+      
+      # DEFINITIVE FIX: Create a clean edge list with ONLY from/to columns
+      # This is the most crucial step to prevent the error.
+      clean_edges <- edges_for_graph %>% select(from, to)
+      
+      # Build the graph safely with the clean edge list first
+      graph <- graph_from_data_frame(d = clean_edges, vertices = vertices, directed = TRUE)
+      
+      # AFTER the graph is built, add the other attributes to its edges
+      E(graph)$Int_prob <- edges_for_graph$Int_prob
+      E(graph)$is_human_interaction <- edges_for_graph$is_human_interaction
+      
+      # Now, create the plot using the fully formed graph object
+      ggraph(graph, layout = 'bipartite') +
+        # Layer 1: Draw the normal, non-human interactions
+        geom_edge_fan(aes(alpha = Int_prob, color = Int_prob, 
+                          filter = !is_human_interaction), width = 0.5) +
+        # Layer 2: Draw the highlighted HUMAN interactions in red
+        geom_edge_fan(aes(alpha = Int_prob, filter = is_human_interaction), 
+                      color = "red", width = 1.2) +
+        # Layer 3: Draw the normal nodes
+        geom_node_point(aes(color = Guild, filter = !is_human_node), size = 4) +
+        # Layer 4: Draw the highlighted HUMAN node (larger with a border)
+        geom_node_point(aes(fill = Guild, filter = is_human_node), 
+                        color = "black", size = 6, shape = 21, stroke = 1.2) +
+        geom_node_text(aes(label = short_name), repel = TRUE, size = 2.5, max.overlaps = 15, bg.colour = "white", segment.color = 'grey50') +
+        scale_color_manual(values = c("Consumer" = "tomato", "Resource" = "skyblue"), name = "Node Type", aesthetics = c("color", "fill")) +
+        scale_edge_color_gradientn(colors = viridis::viridis(256), name = "Interaction Prob.") +
+        scale_edge_alpha(guide = 'none') +
+        theme_graph(base_family = 'sans') +
+        ggtitle(.x)
+    })
+  
+  composite_plot <- wrap_plots(plot_list, ncol = 4) +
+    plot_layout(guides = 'collect') +
+    plot_annotation(
+      title = paste("Network Evolution in Biome:", current_biome),
+      subtitle = "Networks are shown chronologically by geological age.",
+      caption = "Edge color indicates interaction probability (yellow=high). Red lines and bordered node highlight Homo sapiens."
     )
-    
-    evolution_plot <- ggraph(region_graph, layout = 'bipartite') +
-      geom_edge_fan(aes(alpha = weight), show.legend = FALSE) +
-      geom_node_point(aes(color = Guild), size = 4) +
-      geom_node_text(aes(label = name), repel = TRUE, size = 2.5, max.overlaps = 15, bg.colour = "white", segment.color = 'grey50') +
-      scale_color_manual(values = c("Consumer" = "tomato", "Resource" = "skyblue")) +
-      theme_graph(base_family = 'sans', background = 'white') +
-      labs(
-        title = paste("Network Evolution in Region:", current_region),
-        subtitle = "Networks are shown chronologically by geological age.",
-        caption = "Consumers (predators) are on top; Resources (prey) are on the bottom."
-      ) +
-      facet_edges(~ Geological_ages)
-    
-    # This print command now sends the plot to the open PDF file, creating a new page.
-    print(evolution_plot)
-  }
+  
+  print(composite_plot)
 }
 
 # --- Step 3: Close the PDF device ---
-# This is a crucial step to finalize and save the PDF file correctly.
 dev.off()
 
-# A message to let you know the script has finished and where the file is.
-cat("\nPDF file 'Network_Evolution_by_Region.pdf' has been created in your working directory.\n")
-
+cat("\nPDF file 'Network_Evolution_by_Biome_Polished.pdf' has been created in your working directory.\n")
