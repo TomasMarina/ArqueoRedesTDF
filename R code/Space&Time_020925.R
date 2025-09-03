@@ -33,9 +33,9 @@ library(ggrepel)
 # ASSUMPTION: The script assumes your .xlsx files are in a 'data' sub-folder.
 # To make this script run, please create a folder named 'data' in the same
 # directory as the script, and place your Excel files inside it.
-localities_raw <- read_excel("data/Species localities - TDF - 030925.xlsx")
-traits_raw <- read_excel("data/Species traits - TDF - 030925.xlsx", sheet = "traits")
-ages_raw <- read_excel("data/Age localities - TDF - 030925.xlsx")
+localities_raw <- read_excel("data - Santiago2025/Species localities - TDF - 030925.xlsx")
+traits_raw <- read_excel("data - Santiago2025/Species traits - TDF - 030925.xlsx", sheet = "traits")
+ages_raw <- read_excel("data - Santiago2025/Age localities - TDF - 030925.xlsx")
 
 
 # -----------------------------------------------------------------------------
