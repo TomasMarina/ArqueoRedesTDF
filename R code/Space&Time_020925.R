@@ -1,9 +1,8 @@
 # -----------------------------------------------------------------------------
 #
 # R SCRIPT FOR RECONSTRUCTING ANCIENT CONSUMER-RESOURCE NETWORKS
-# Definitive Final Version: This version uses a robust, two-step method for
-# creating graph components that prevents data mismatches, and includes the
-# final polished highlighting and unified legend.
+# Definitive Final Version: This version adds a filter to ensure Homo sapiens
+# only acts as a consumer and never as a resource.
 #
 # -----------------------------------------------------------------------------
 
@@ -50,7 +49,7 @@ ages_raw <- read_excel("data/Age localities - TDF - 030925.xlsx")
 # -----------------------------------------------------------------------------
 
 # --- Tidy the Localities Data ---
-localities_df <- localities_raw %>%
+localities_df_base <- localities_raw %>%
   mutate(across(-TrophicSpecies, as.numeric)) %>%
   pivot_longer(
     cols = -TrophicSpecies,
@@ -60,6 +59,16 @@ localities_df <- localities_raw %>%
   mutate(Abundance = replace_na(Abundance, 0)) %>%
   filter(Abundance > 0) %>%
   select(Locality, TrophicSpecies)
+
+# --- Inject Homo sapiens as a Ubiquitous Consumer ---
+all_localities <- unique(localities_df_base$Locality)
+homo_sapiens_presence <- tibble(
+  Locality = all_localities,
+  TrophicSpecies = "Homo_sapiens"
+)
+localities_df <- bind_rows(localities_df_base, homo_sapiens_presence) %>%
+  distinct()
+
 
 # --- Tidy the Traits Data ---
 traits_df <- traits_raw %>%
@@ -169,6 +178,8 @@ interaction_list <- sites_list %>%
 final_interaction_df <- interaction_list %>%
   left_join(ages_df, by = "Locality") %>%
   filter(Predator != Prey) %>%
+  # NEW CRUCIAL RULE: Exclude any interaction where Homo sapiens is the prey.
+  filter(Prey != "Homo_sapiens") %>%
   filter(Int_prob > 0) %>%
   select(Locality, Biome, Geological_ages, Predator, Prey, Int_prob) %>%
   arrange(Biome, Geological_ages, Locality, Predator, desc(Int_prob))
@@ -176,8 +187,7 @@ final_interaction_df <- interaction_list %>%
 
 # -----------------------------------------------------------------------------
 # PART 7: VISUALIZATION OF NETWORK EVOLUTION BY BIOME
-# Creates a final, polished plot for each biome with a single legend and
-# strong highlighting for the Homo sapiens node and its interactions.
+# Creates a final, polished plot for each biome.
 # -----------------------------------------------------------------------------
 
 # --- Step 1: Prepare data for plotting ---
@@ -205,7 +215,6 @@ for (current_biome in biomes_to_plot) {
         return(ggplot() + theme_void() + ggtitle(.x))
       }
       
-      # Prepare the complete edge data frame with all attributes
       edges_for_graph <- age_data %>%
         mutate(
           from = paste0(Predator, "_C"), 
@@ -213,7 +222,6 @@ for (current_biome in biomes_to_plot) {
           is_human_interaction = (Predator == "Homo_sapiens" | Prey == "Homo_sapiens")
         )
       
-      # Prepare the complete vertex data frame
       vertices <- tibble(name = unique(c(edges_for_graph$from, edges_for_graph$to))) %>%
         mutate(
           short_name = str_remove(name, "_[CR]$"),
@@ -222,28 +230,19 @@ for (current_biome in biomes_to_plot) {
           is_human_node = (short_name == "Homo_sapiens")
         )
       
-      # DEFINITIVE FIX: Create a clean edge list with ONLY from/to columns
-      # This is the most crucial step to prevent the error.
       clean_edges <- edges_for_graph %>% select(from, to)
       
-      # Build the graph safely with the clean edge list first
       graph <- graph_from_data_frame(d = clean_edges, vertices = vertices, directed = TRUE)
       
-      # AFTER the graph is built, add the other attributes to its edges
       E(graph)$Int_prob <- edges_for_graph$Int_prob
       E(graph)$is_human_interaction <- edges_for_graph$is_human_interaction
       
-      # Now, create the plot using the fully formed graph object
       ggraph(graph, layout = 'bipartite') +
-        # Layer 1: Draw the normal, non-human interactions
         geom_edge_fan(aes(alpha = Int_prob, color = Int_prob, 
                           filter = !is_human_interaction), width = 0.5) +
-        # Layer 2: Draw the highlighted HUMAN interactions in red
         geom_edge_fan(aes(alpha = Int_prob, filter = is_human_interaction), 
                       color = "red", width = 1.2) +
-        # Layer 3: Draw the normal nodes
         geom_node_point(aes(color = Guild, filter = !is_human_node), size = 4) +
-        # Layer 4: Draw the highlighted HUMAN node (larger with a border)
         geom_node_point(aes(fill = Guild, filter = is_human_node), 
                         color = "black", size = 6, shape = 21, stroke = 1.2) +
         geom_node_text(aes(label = short_name), repel = TRUE, size = 2.5, max.overlaps = 15, bg.colour = "white", segment.color = 'grey50') +
@@ -269,3 +268,4 @@ for (current_biome in biomes_to_plot) {
 dev.off()
 
 cat("\nPDF file 'Network_Evolution_by_Biome_Polished.pdf' has been created in your working directory.\n")
+
