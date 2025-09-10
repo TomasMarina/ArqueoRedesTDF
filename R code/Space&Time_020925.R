@@ -81,7 +81,7 @@ traits_df <- traits_raw %>%
   ungroup() %>%
   mutate(
     Guild = if_else(
-      FeedingStrategy %in% c("Carnivore", "Omnivore", "Piscivore", "Insectivore"),
+      FeedingStrategy %in% c("Carnivore", "Piscivore"), # "Omnivore", "Insectivore"
       "Consumer",
       "Resource"
     )
@@ -199,7 +199,7 @@ plotting_df <- final_interaction_df %>%
   mutate(Geological_ages = factor(Geological_ages, levels = age_levels))
 
 # --- Step 2: Open PDF device and loop through biomes to create composite plots ---
-pdf("results/Network_Evolution_by_Biome_Final.pdf", width = 15, height = 8.5)
+pdf("results/Network_Evolution_by_Biome_Strict.pdf", width = 15, height = 8.5)
 biomes_to_plot <- unique(plotting_df$Biome)
 
 for (current_biome in biomes_to_plot) {
