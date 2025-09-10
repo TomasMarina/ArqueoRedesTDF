@@ -1,8 +1,9 @@
 # -----------------------------------------------------------------------------
 #
 # R SCRIPT FOR RECONSTRUCTING ANCIENT CONSUMER-RESOURCE NETWORKS
-# Definitive Final Version: This version adds a filter to ensure Homo sapiens
-# only acts as a consumer and never as a resource.
+# Definitive Final Version: This version fixes the legend display by creating
+# a single, unified legend per page and adding Homo sapiens as a distinct
+# category in the node legend.
 #
 # -----------------------------------------------------------------------------
 
@@ -38,9 +39,9 @@ library(viridis)
 # ASSUMPTION: The script assumes your .xlsx files are in a 'data' sub-folder.
 # To make this script run, please create a folder named 'data' in the same
 # directory as the script, and place your Excel files inside it.
-localities_raw <- read_excel("data/Species localities - TDF - 030925.xlsx")
-traits_raw <- read_excel("data/Species traits - TDF - 030925.xlsx", sheet = "traits")
-ages_raw <- read_excel("data/Age localities - TDF - 030925.xlsx")
+localities_raw <- read_excel("data - Santiago2025/Species localities - TDF - 030925.xlsx")
+traits_raw <- read_excel("data - Santiago2025/Species traits - TDF - 030925.xlsx", sheet = "traits")
+ages_raw <- read_excel("data - Santiago2025/Age localities - TDF - 030925.xlsx")
 
 
 # -----------------------------------------------------------------------------
@@ -80,7 +81,7 @@ traits_df <- traits_raw %>%
   ungroup() %>%
   mutate(
     Guild = if_else(
-      FeedingStrategy %in% c("Carnivore", "Omnivore", "Piscivore"),
+      FeedingStrategy %in% c("Carnivore", "Omnivore", "Piscivore", "Insectivore"),
       "Consumer",
       "Resource"
     )
@@ -151,7 +152,7 @@ sites_list <- localities_df %>%
   group_by(Locality) %>%
   group_split()
 
-N_REPLICATES <- 100
+N_REPLICATES <- 1000
 
 interaction_list <- sites_list %>%
   set_names(map_chr(., ~ .x$Locality[1])) %>%
@@ -178,7 +179,6 @@ interaction_list <- sites_list %>%
 final_interaction_df <- interaction_list %>%
   left_join(ages_df, by = "Locality") %>%
   filter(Predator != Prey) %>%
-  # NEW CRUCIAL RULE: Exclude any interaction where Homo sapiens is the prey.
   filter(Prey != "Homo_sapiens") %>%
   filter(Int_prob > 0) %>%
   select(Locality, Biome, Geological_ages, Predator, Prey, Int_prob) %>%
@@ -199,7 +199,7 @@ plotting_df <- final_interaction_df %>%
   mutate(Geological_ages = factor(Geological_ages, levels = age_levels))
 
 # --- Step 2: Open PDF device and loop through biomes to create composite plots ---
-pdf("Network_Evolution_by_Biome_Polished.pdf", width = 15, height = 8.5)
+pdf("results/Network_Evolution_by_Biome_Final.pdf", width = 15, height = 8.5)
 biomes_to_plot <- unique(plotting_df$Biome)
 
 for (current_biome in biomes_to_plot) {
@@ -222,16 +222,20 @@ for (current_biome in biomes_to_plot) {
           is_human_interaction = (Predator == "Homo_sapiens" | Prey == "Homo_sapiens")
         )
       
+      # MODIFIED: Create a new 'NodeType' column for the legend
       vertices <- tibble(name = unique(c(edges_for_graph$from, edges_for_graph$to))) %>%
         mutate(
           short_name = str_remove(name, "_[CR]$"),
           Guild = if_else(str_ends(name, "_C$"), "Consumer", "Resource"),
           type = Guild == "Consumer",
-          is_human_node = (short_name == "Homo_sapiens")
+          is_human_node = (short_name == "Homo_sapiens"),
+          NodeType = case_when(
+            is_human_node ~ "Homo sapiens",
+            TRUE ~ Guild
+          )
         )
       
       clean_edges <- edges_for_graph %>% select(from, to)
-      
       graph <- graph_from_data_frame(d = clean_edges, vertices = vertices, directed = TRUE)
       
       E(graph)$Int_prob <- edges_for_graph$Int_prob
@@ -242,12 +246,23 @@ for (current_biome in biomes_to_plot) {
                           filter = !is_human_interaction), width = 0.5) +
         geom_edge_fan(aes(alpha = Int_prob, filter = is_human_interaction), 
                       color = "red", width = 1.2) +
-        geom_node_point(aes(color = Guild, filter = !is_human_node), size = 4) +
-        geom_node_point(aes(fill = Guild, filter = is_human_node), 
+        # MODIFIED: Map color and fill aesthetics to the new 'NodeType' column
+        geom_node_point(aes(color = NodeType, filter = !is_human_node), size = 4) +
+        geom_node_point(aes(fill = NodeType, filter = is_human_node), 
                         color = "black", size = 6, shape = 21, stroke = 1.2) +
         geom_node_text(aes(label = short_name), repel = TRUE, size = 2.5, max.overlaps = 15, bg.colour = "white", segment.color = 'grey50') +
-        scale_color_manual(values = c("Consumer" = "tomato", "Resource" = "skyblue"), name = "Node Type", aesthetics = c("color", "fill")) +
-        scale_edge_color_gradientn(colors = viridis::viridis(256), name = "Interaction Prob.") +
+        # MODIFIED: Update the manual scale with three categories
+        scale_color_manual(
+          values = c("Consumer" = "tomato", "Resource" = "skyblue", "Homo sapiens" = "tomato"), 
+          name = "Node Type", 
+          aesthetics = c("color", "fill")
+        ) +
+        # MODIFIED: Add limits to the edge scale to ensure it's collectible
+        scale_edge_color_gradientn(
+          colors = viridis::viridis(256), 
+          name = "Interaction Prob.",
+          limits = c(0, 1) 
+        ) +
         scale_edge_alpha(guide = 'none') +
         theme_graph(base_family = 'sans') +
         ggtitle(.x)
@@ -267,5 +282,5 @@ for (current_biome in biomes_to_plot) {
 # --- Step 3: Close the PDF device ---
 dev.off()
 
-cat("\nPDF file 'Network_Evolution_by_Biome_Polished.pdf' has been created in your working directory.\n")
+cat("\nPDF file 'Network_Evolution_by_Biome_Final.pdf' has been created in your working directory.\n")
 
