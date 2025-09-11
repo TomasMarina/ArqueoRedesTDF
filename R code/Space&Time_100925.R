@@ -1,9 +1,9 @@
 # -----------------------------------------------------------------------------
 #
 # R SCRIPT FOR RECONSTRUCTING ANCIENT CONSUMER-RESOURCE NETWORKS
-# Definitive Final Version: This version fixes the legend display by creating
-# a single, unified legend per page and adding Homo sapiens as a distinct
-# category in the node legend.
+# Definitive Final Version: This version implements the final, definitive fix
+# for the plotting error by building a complete graph object upfront and using
+# ggraph's 'filter' aesthetic, which is the robust and correct method.
 #
 # -----------------------------------------------------------------------------
 
@@ -65,8 +65,16 @@ localities_df <- bind_rows(localities_df_base, homo_sapiens_presence) %>%
 
 # --- Tidy the Traits Data ---
 traits_df <- traits_raw %>%
-  select(TrophicSpecies, BodySize_min, BodySize_max, FeedingStrategy, FeedingHabitat) %>%
-  filter(!is.na(FeedingStrategy), FeedingStrategy != "??") %>%
+  select(Class, TrophicSpecies, BodySize_min, BodySize_max, FeedingStrategy, FeedingHabitat) %>%
+  filter(!is.na(FeedingStrategy), FeedingStrategy != "??", !is.na(Class)) %>%
+  mutate(
+    Category = case_when(
+      Class == "Aves" ~ "Aves",
+      Class == "Mammalia" ~ "Mamiferos",
+      Class %in% c("Teleostei", "Actinopterygii", "Chondrichthyes") ~ "Peces",
+      TRUE ~ "Invertebrados"
+    )
+  ) %>%
   rowwise() %>%
   mutate(
     BodyMass_g = exp(mean(log(c(BodySize_min, BodySize_max)), na.rm = TRUE)) * 1000
@@ -79,7 +87,7 @@ traits_df <- traits_raw %>%
       "Resource"
     )
   ) %>%
-  select(TrophicSpecies, BodyMass_g, Guild, FeedingHabitat) %>%
+  select(Category, TrophicSpecies, BodyMass_g, Guild, FeedingHabitat) %>%
   filter(!is.na(BodyMass_g) & !is.na(FeedingHabitat))
 
 # --- Tidy the Age and Spatial Data ---
@@ -165,34 +173,52 @@ interaction_list <- sites_list %>%
 
 
 # -----------------------------------------------------------------------------
-# PART 6: CREATE FINAL INTERACTION DATA FRAME
-# Filter, join data, remove self-loops, and arrange the results.
+# PART 6: CREATE FINAL INTERACTION DATA FRAME WITH TAXONOMIC CATEGORIES
+# Filter, join data, and add the new Predator_cat and Prey_cat columns.
 # -----------------------------------------------------------------------------
+
+traits_for_join <- traits_df %>% select(TrophicSpecies, Category)
 
 final_interaction_df <- interaction_list %>%
   left_join(ages_df, by = "Locality") %>%
   filter(Predator != Prey) %>%
   filter(Prey != "Homo_sapiens") %>%
   filter(Int_prob > 0) %>%
-  select(Locality, Biome, Geological_ages, Predator, Prey, Int_prob) %>%
+  left_join(traits_for_join, by = c("Predator" = "TrophicSpecies")) %>%
+  rename(Predator_cat = Category) %>%
+  left_join(traits_for_join, by = c("Prey" = "TrophicSpecies")) %>%
+  rename(Prey_cat = Category) %>%
+  mutate(
+    Predator_cat = if_else(Predator == "Homo_sapiens", "Humano", Predator_cat)
+  ) %>%
+  select(Locality, Biome, Geological_ages, Predator, Predator_cat, Prey, Prey_cat, Int_prob) %>%
   arrange(Biome, Geological_ages, Locality, Predator, desc(Int_prob))
 
 
 # -----------------------------------------------------------------------------
 # PART 7: VISUALIZATION OF NETWORK EVOLUTION BY BIOME
-# Creates a final, polished plot for each biome.
+# Creates a final, polished plot using the new taxonomic categories.
 # -----------------------------------------------------------------------------
 
-# --- Step 1: Prepare data for plotting ---
+# --- Step 1: Prepare data and define color palette ---
 age_levels <- c("Pleistoceno final", "Holoceno medio", "Holoceno final", "Histórico")
+
+taxa_colors <- c(
+  "Aves" = rgb(221, 165, 2, maxColorValue = 255),
+  "Mamiferos" = rgb(205, 58, 46, maxColorValue = 255),
+  "Peces" = rgb(47, 99, 184, maxColorValue = 255),
+  "Invertebrados" = rgb(192, 80, 1, maxColorValue = 255),
+  "Humano" = rgb(0, 158, 115, maxColorValue = 255)
+)
+
 plotting_df <- final_interaction_df %>%
   filter(!is.na(Biome) & !is.na(Geological_ages)) %>%
-  group_by(Biome, Geological_ages, Predator, Prey) %>%
+  group_by(Biome, Geological_ages, Predator, Predator_cat, Prey, Prey_cat) %>%
   summarise(Int_prob = mean(Int_prob, na.rm = TRUE), .groups = 'drop') %>%
   mutate(Geological_ages = factor(Geological_ages, levels = age_levels))
 
-# --- Step 2: Open PDF device and loop through biomes to create composite plots ---
-pdf("results/Network_Evolution_by_Biome_Final.pdf", width = 15, height = 8.5)
+# --- Step 2: Open PDF device and loop through biomes to create plots ---
+pdf("Network_Evolution_by_Biome_Final_Categorized.pdf", width = 15, height = 8.5)
 biomes_to_plot <- unique(plotting_df$Biome)
 
 for (current_biome in biomes_to_plot) {
@@ -208,54 +234,55 @@ for (current_biome in biomes_to_plot) {
         return(ggplot() + theme_void() + ggtitle(.x))
       }
       
+      # DEFINITIVE FIX: Build the graph with all attributes from the start
+      
       edges_for_graph <- age_data %>%
         mutate(
           from = paste0(Predator, "_C"), 
           to = paste0(Prey, "_R"),
-          is_human_interaction = (Predator == "Homo_sapiens" | Prey == "Homo_sapiens")
+          is_human_interaction = (Predator == "Homo_sapiens")
         )
       
-      # MODIFIED: Create a new 'NodeType' column for the legend
-      vertices <- tibble(name = unique(c(edges_for_graph$from, edges_for_graph$to))) %>%
+      vertices <- tibble(
+        short_name = c(age_data$Predator, age_data$Prey),
+        Category = c(age_data$Predator_cat, age_data$Prey_cat),
+        Guild = c(rep("Consumer", nrow(age_data)), rep("Resource", nrow(age_data)))
+      ) %>%
         mutate(
-          short_name = str_remove(name, "_[CR]$"),
-          Guild = if_else(str_ends(name, "_C$"), "Consumer", "Resource"),
+          name = if_else(Guild == "Consumer", paste0(short_name, "_C"), paste0(short_name, "_R")),
           type = Guild == "Consumer",
-          is_human_node = (short_name == "Homo_sapiens"),
-          NodeType = case_when(
-            is_human_node ~ "Homo sapiens",
-            TRUE ~ Guild
-          )
-        )
+          is_human_node = (short_name == "Homo_sapiens")
+        ) %>%
+        distinct(name, .keep_all = TRUE) %>%
+        select(name, everything())
       
-      clean_edges <- edges_for_graph %>% select(from, to)
-      graph <- graph_from_data_frame(d = clean_edges, vertices = vertices, directed = TRUE)
+      # Create the graph object with all attributes included in the edge data frame
+      graph <- graph_from_data_frame(
+        d = edges_for_graph %>% select(from, to, Int_prob, is_human_interaction), 
+        vertices = vertices, 
+        directed = TRUE
+      )
       
-      E(graph)$Int_prob <- edges_for_graph$Int_prob
-      E(graph)$is_human_interaction <- edges_for_graph$is_human_interaction
+      # Convert to tbl_graph for ggraph compatibility
+      tbl_graph <- as_tbl_graph(graph)
       
-      ggraph(graph, layout = 'bipartite') +
-        geom_edge_fan(aes(alpha = Int_prob, color = Int_prob, 
-                          filter = !is_human_interaction), width = 0.5) +
+      # Generate the plot for this specific age, using the 'filter' aesthetic
+      ggraph(tbl_graph, layout = 'bipartite') +
+        # Layer for standard edges
+        geom_edge_fan(aes(alpha = Int_prob, color = Int_prob, filter = !is_human_interaction), 
+                      width = 0.5) +
+        # Layer for highlighted human edges
         geom_edge_fan(aes(alpha = Int_prob, filter = is_human_interaction), 
                       color = "red", width = 1.2) +
-        # MODIFIED: Map color and fill aesthetics to the new 'NodeType' column
-        geom_node_point(aes(color = NodeType, filter = !is_human_node), size = 4) +
-        geom_node_point(aes(fill = NodeType, filter = is_human_node), 
-                        color = "black", size = 6, shape = 21, stroke = 1.2) +
+        # Layer for standard nodes
+        geom_node_point(aes(fill = Category, filter = !is_human_node), 
+                        shape = 21, color = "black", size = 5, stroke = 0.5) +
+        # Layer for highlighted human node
+        geom_node_point(aes(fill = Category, filter = is_human_node), 
+                        shape = 21, color = "black", size = 7, stroke = 1.5) +
         geom_node_text(aes(label = short_name), repel = TRUE, size = 2.5, max.overlaps = 15, bg.colour = "white", segment.color = 'grey50') +
-        # MODIFIED: Update the manual scale with three categories
-        scale_color_manual(
-          values = c("Consumer" = "tomato", "Resource" = "skyblue", "Homo sapiens" = "tomato"), 
-          name = "Node Type", 
-          aesthetics = c("color", "fill")
-        ) +
-        # MODIFIED: Add limits to the edge scale to ensure it's collectible
-        scale_edge_color_gradientn(
-          colors = viridis::viridis(256), 
-          name = "Interaction Prob.",
-          limits = c(0, 1) 
-        ) +
+        scale_fill_manual(values = taxa_colors, name = "Taxonomic Category", na.value = "grey50") +
+        scale_edge_color_gradient(low = "grey85", high = "black", name = "Interaction Prob.", limits = c(0,1)) +
         scale_edge_alpha(guide = 'none') +
         theme_graph(base_family = 'sans') +
         ggtitle(.x)
@@ -266,7 +293,7 @@ for (current_biome in biomes_to_plot) {
     plot_annotation(
       title = paste("Network Evolution in Biome:", current_biome),
       subtitle = "Networks are shown chronologically by geological age.",
-      caption = "Edge color indicates interaction probability (yellow=high). Red lines and bordered node highlight Homo sapiens."
+      caption = "Node color indicates taxonomic category. Edge color indicates probability (black=high). Red lines & bordered node highlight Homo sapiens."
     )
   
   print(composite_plot)
@@ -275,5 +302,4 @@ for (current_biome in biomes_to_plot) {
 # --- Step 3: Close the PDF device ---
 dev.off()
 
-cat("\nPDF file 'Network_Evolution_by_Biome_Final.pdf' has been created in your working directory.\n")
-
+cat("\nPDF file 'Network_Evolution_by_Biome_Final_Categorized.pdf' has been created in your working directory.\n")
