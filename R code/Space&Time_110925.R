@@ -33,7 +33,7 @@ library(viridis)
 # To make this script run, please create a folder named 'data' in the same
 # directory as the script, and place your Excel files inside it.
 localities_raw <- read_excel("data/Species localities - TDF - 030925.xlsx")
-traits_raw <- read_excel("data/Species traits - TDF - 100925.xlsx", sheet = "traits")
+traits_raw <- read_excel("data/Species traits - TDF - 241025.xlsx", sheet = "traits")
 ages_raw <- read_excel("data/Age localities - TDF - 030925.xlsx")
 
 
