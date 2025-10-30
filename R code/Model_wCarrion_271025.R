@@ -3,9 +3,14 @@
 # R SCRIPT FOR RECONSTRUCTING ANCIENT CONSUMER-RESOURCE NETWORKS
 # (Tierra del Fuego Archaeological Study)
 #
-# Version: 241025
-# This version is updated to handle specific scavenging interactions
-# based on 'carrion_only' and 'facultative_scavenger' traits.
+# Version: 301025-CorrectedPlots
+#
+# *** SCRIPT CORRECTIONS ***
+# 1. PART 9 (Boxplots): Now plots the raw 'final_metrics_all_reps' data (all 100
+#    replicates) and uses 'facet_grid' to match the desired PDF layout.
+# 2. PART 10 (Network Plots): Now correctly creates a true bipartite graph
+#    by DUPLICATING nodes (e.g., omnivores) that exist in both the
+#    consumer and resource layers, matching the desired PDF layout.
 #
 # ----------------------------------------------------------------------------
 
@@ -31,12 +36,15 @@ library(patchwork)
 library(viridis)
 
 set.seed(123) # for reproducibility
+Sys.setlocale("LC_TIME", "en_US.UTF-8") # Ensure consistent date formatting
+
+# Get today's date for filenames (DDMMYY format)
+today_date <- format(Sys.Date(), "%d%m%y")
 
 
 # ----------------------------------------------------------------------------
 # PART 2: DATA LOADING AND INITIAL CLEANING
 # Read the raw data files.
-# *** UPDATED ***: Using user-specified paths with read_excel.
 # ----------------------------------------------------------------------------
 
 print("Loading data...")
@@ -49,7 +57,7 @@ ages_raw <- read_excel("data - Santiago2025/Age localities - TDF - 030925.xlsx")
 
 # ----------------------------------------------------------------------------
 # PART 3: DATA PREPARATION
-# Clean and prepare data frames for analysis.
+# Clean and prepare the three data sources.
 # ----------------------------------------------------------------------------
 
 print("Preparing data...")
@@ -57,27 +65,28 @@ print("Preparing data...")
 # --- Clean Traits Data ---
 traits <- traits_raw %>%
   clean_names() %>%
-  # Ensure TrophicSpecies is a character
-  mutate(trophic_species = as.character(trophic_species)) %>%
-  # Calculate average log10 body mass (in kg)
-  mutate(log_mass = log10((body_size_min + body_size_max) / 2)) %>%
-  # Handle NAs in new scavenging columns
-  # *** NEW ***: Convert NAs to 0 for logical comparisons
+  # Handle potential NAs in new columns
   mutate(
-    carrion_only = ifelse(is.na(carrion_only), 0, carrion_only),
-    facultative_scavenger = ifelse(is.na(facultative_scavenger), 0, facultative_scavenger)
+    facultative_scavenger = ifelse(is.na(facultative_scavenger), 0, facultative_scavenger),
+    carrion_only = ifelse(is.na(carrion_only), 0, carrion_only)
   ) %>%
-  # Select relevant columns
+  # Calculate log10 body size
+  mutate(
+    # Use geometric mean if both min and max are available
+    avg_bodysize_kg = exp((log(body_size_min) + log(body_size_max)) / 2),
+    log10_bodysize = log10(avg_bodysize_kg)
+  ) %>%
+  # Select only the columns we need
   select(
-    trophic_species, class, order, family, 
-    log_mass, feeding_strategy, feeding_habitat,
-    carrion_only, facultative_scavenger, human_resource
+    trophic_species, class, order, family,
+    log10_bodysize, feeding_strategy,
+    feeding_habitat, facultative_scavenger, carrion_only
   ) %>%
   # Ensure no duplicate species
   distinct(trophic_species, .keep_all = TRUE)
 
 # --- Clean Localities Data ---
-# *** UPDATED ***: Added 'values_transform' to handle mixed data types.
+# This block pivots the "wide" format of the localities file.
 localities <- localities_raw %>%
   clean_names() %>%
   pivot_longer(
@@ -98,418 +107,338 @@ localities <- localities_raw %>%
   inner_join(traits %>% select(trophic_species), by = "trophic_species")
 
 # --- Clean Ages Data ---
-# *** UPDATED ***: Renamed 'geological_ages' to 'time_bin' to match script
 ages <- ages_raw %>%
   clean_names() %>%
+  # Fix case-sensitivity to allow joining with pivoted locality names
+  mutate(locality = tolower(locality)) %>%
   # The column in your file is "Geological_ages"
-  select(locality, time_bin = geological_ages) %>%
+  select(locality, time_bin = geological_ages, region_col) %>%
   distinct()
 
-# --- Create final species-by-locality dataset ---
-species_by_locality <- localities %>%
-  left_join(ages, by = "locality") %>%
-  filter(!is.na(time_bin)) %>%
-  select(time_bin, locality, trophic_species) %>%
-  distinct()
+# *** KEY CHANGE HERE ***
+# --- Create final species-by-AGGREGATED-unit dataset ---
+# This merges all localities that share the same time_bin and region_col.
+splocs_agg <- localities %>%
+  inner_join(ages, by = "locality") %>%
+  # Group by the desired spatio-temporal bins, NOT by locality
+  group_by(time_bin, region_col) %>%
+  # Summarise the species list, collecting all unique species from all localities in that bin
+  summarise(
+    species_list = list(unique(trophic_species)),
+    # Optional: keep a list of the localities that were merged
+    localities_merged_count = n_distinct(locality)
+  ) %>%
+  ungroup() %>%
+  # Handle potential NAs in time_bin or region_col if they exist
+  filter(!is.na(time_bin), !is.na(region_col))
 
-# --- Define plotting colors for taxa ---
-taxa_colors <- c(
-  "Mammalia" = "#a6611a",  # Brown
-  "Aves" = "#018571",      # Teal
-  "Actinopterygii" = "#4575b4", # Blue
-  "Chondrichthyes" = "#2c7fb8",
-  "Mollusca" = "#7fbc41",     # Green
-  "Malacostraca" = "#d01c8b",  # Magenta
-  "Echinoidea" = "#f1b6da"   # Pink
-)
+print("Data prepared.")
+print(paste(nrow(splocs_agg), "unique aggregated time-bin/region combinations found."))
+print(splocs_agg)
 
 
 # ----------------------------------------------------------------------------
-# PART 4: HELPER FUNCTIONS
-# Define functions for network reconstruction and analysis.
+# PART 4: DEFINE MODEL PARAMETERS
+# This function generates the STOCHASTIC (randomized) parameters
+# from your 'Space&Time_11025.R' script.
+# It will be called ONCE PER REPLICATE.
 # ----------------------------------------------------------------------------
 
-#' Check Habitat Overlap
-#'
-#' Checks if two species share at least one feeding habitat.
-#' Habitats are provided as strings, potentially multi-valued (e.g., "Ter-Mar").
-#'
-#' @param hab1 Habitat(s) for species 1 (e.g., "Terrestrial", "Ter-Mar")
-#' @param hab2 Habitat(s) for species 2 (e.g., "Marine", "Ter-Mar")
-#' @return Logical (TRUE if overlap, FALSE otherwise)
-check_habitat_overlap <- function(hab1, hab2) {
-  # Return FALSE if either habitat is unknown
-  if (is.na(hab1) | is.na(hab2)) {
-    return(FALSE)
-  }
-  
-  # Split multi-habitat strings into vectors
-  hab1_list <- str_split(hab1, "-")[[1]]
-  hab2_list <- str_split(hab2, "-")[[1]]
-  
-  # Check for any common elements
-  return(any(hab1_list %in% hab2_list))
+get_stochastic_params <- function() {
+  params <- list(
+    # Parameters for Carnivores (P)
+    alphaP = runif(1, 1, 2),
+    betaP = runif(1, -2, -1),
+    gammaP = runif(1, -1, -0.5),
+    
+    # Parameters for Omnivores (O)
+    alphaO = runif(1, -6, -4),
+    betaO = runif(1, -3, -2),
+    gammaO = 0 # As specified in your original script
+  )
+  return(params)
 }
 
+print("Stochastic parameter function (get_stochastic_params) loaded.")
 
-#' Calculate Interaction Probabilities
-#'
-#' Reconstructs a probabilistic food web for a given list of species.
-#'
-#' @param species_list A character vector of 'trophic_species' present.
-#' @param traits_df The main 'traits' data frame.
-#' @param a_param Intercept parameter from Nascimento et al. (2024).
-#' @param b_param Slope parameter from Nascimento et al. (2024).
-#' @return A data frame (tibble) of edges (from, to, Int_prob), or NULL.
-calculate_interaction_probabilities <- function(species_list, traits_df, a_param, b_param) {
+
+# ----------------------------------------------------------------------------
+# PART 5: RECONSTRUCTION FUNCTION
+# This function reconstructs a single probabilistic network.
+# ----------------------------------------------------------------------------
+
+reconstruct_network <- function(sp_traits, model_params, focal_habitat = "Ter-Mar") {
   
-  traits_filtered <- traits_df %>%
-    filter(trophic_species %in% species_list)
+  # --- 1. Define Consumer and Resource Pools ---
   
-  # 1. Define potential consumers and resources
-  consumers <- traits_filtered %>%
+  # Consumers are Carnivores and Omnivores
+  consumers <- sp_traits %>%
     filter(feeding_strategy %in% c("Carnivore", "Omnivore"))
   
-  # *** UPDATED ***: Resources are herbivores, omnivores, OR 'carrion_only'
-  resources <- traits_filtered %>%
+  # Resources are Herbivores, Omnivores, AND carrion-only species
+  resources <- sp_traits %>%
     filter(feeding_strategy %in% c("Herbivore", "Omnivore") | carrion_only == 1)
   
-  # Exit if no consumers or resources are present
-  if (nrow(consumers) == 0 | nrow(resources) == 0) {
-    return(NULL)
+  # Filter by habitat if specified
+  if (focal_habitat != "Ter-Mar") {
+    consumers <- consumers %>% filter(feeding_habitat == focal_habitat | feeding_habitat == "Ter-Mar")
+    resources <- resources %>% filter(feeding_habitat == focal_habitat | feeding_habitat == "Ter-Mar")
   }
   
-  # 2. Create all possible consumer-resource pairs
+  # Create all possible consumer-resource pairs
   all_pairs <- expand_grid(
-    Consumer = consumers$trophic_species,
-    Resource = resources$trophic_species
+    consumer_species = consumers$trophic_species,
+    resource_species = resources$trophic_species
   ) %>%
-    # A species cannot consume itself
-    filter(Consumer != Resource)
+    # Remove self-loops (e.g., Omnivore-Omnivore)
+    filter(consumer_species != resource_species) %>%
+    # Join traits
+    left_join(consumers %>% select(consumer_species = trophic_species, consumer = feeding_strategy, log10_c = log10_bodysize, habitat_c = feeding_habitat, scav_c = facultative_scavenger), by = "consumer_species") %>%
+    left_join(resources %>% select(resource_species = trophic_species, resource = feeding_strategy, log10_r = log10_bodysize, habitat_r = feeding_habitat, carrion_r = carrion_only), by = "resource_species")
   
   if (nrow(all_pairs) == 0) {
-    return(NULL)
+    return(data.frame(Consumer = character(), Resource = character(), Int_prob = numeric()))
   }
   
-  # 3. Join trait data for pairs
-  all_pairs <- all_pairs %>%
-    left_join(
-      traits_df %>% select(
-        trophic_species, Consumer_BodySize = log_mass, 
-        Consumer_Habitat = feeding_habitat, 
-        Consumer_Scavenger = facultative_scavenger # *** NEW ***
-      ),
-      by = c("Consumer" = "trophic_species")
-    ) %>%
-    left_join(
-      traits_df %>% select(
-        trophic_species, Resource_BodySize = log_mass, 
-        Resource_Habitat = feeding_habitat, 
-        Resource_Carrion = carrion_only # *** NEW ***
-      ),
-      by = c("Resource" = "trophic_species")
+  # --- 2. Calculate Interaction Probabilities ---
+  
+  # This part iterates row-by-row to apply the complex rules
+  results_list <- list()
+  
+  for (i in 1:nrow(all_pairs)) {
+    pair <- all_pairs[i, ]
+    
+    # --- A. Check Habitat Overlap ---
+    habitat_overlap <- if_else(
+      pair$habitat_c == pair$habitat_r |
+        pair$habitat_c == "Ter-Mar" |
+        pair$habitat_r == "Ter-Mar",
+      1.0,
+      0.0
     )
-  
-  # 4. Filter by Habitat Overlap
-  # (This was the step you asked about - it's included here)
-  all_pairs$Habitat_Overlap <- mapply(
-    check_habitat_overlap, 
-    all_pairs$Consumer_Habitat, 
-    all_pairs$Resource_Habitat
-  )
-  
-  interaction_edges <- all_pairs %>%
-    filter(Habitat_Overlap == TRUE)
-  
-  if (nrow(interaction_edges) == 0) {
-    return(NULL)
-  }
-  
-  # 5. Calculate Interaction Probabilities
-  interaction_edges <- interaction_edges %>%
-    mutate(
-      # Standard log-mass ratio
-      log_ratio = Consumer_BodySize - Resource_BodySize,
-      
-      # Standard model probability (Logistic regression from Nascimento et al.)
-      prob_model = exp(a_param + b_param * log_ratio) / (1 + exp(a_param + b_param * log_ratio)),
-      
-      # *** NEW SCAVENGING RULE ***
-      # If consumer is a scavenger AND resource is carrion, force prob to 1.0
-      # Otherwise, use the standard body-mass model probability.
-      Int_prob = case_when(
-        Consumer_Scavenger == 1 & Resource_Carrion == 1 ~ 1.0,
-        TRUE ~ prob_model
-      ),
-      
-      # Remove biologically impossible interactions (prob < 0.01)
-      Int_prob = ifelse(Int_prob < 0.01, 0, Int_prob)
-    ) %>%
-    filter(Int_prob > 0) %>%
-    select(from = Consumer, to = Resource, Int_prob)
-  
-  if (nrow(interaction_edges) == 0) {
-    return(NULL)
-  }
-  
-  return(interaction_edges)
-}
-
-
-#' Calculate Network Metrics
-#'
-#' Calculates a set of network metrics for a single binary adjacency matrix.
-#'
-#' @param web_matrix A binary adjacency matrix (rows=resources, cols=consumers).
-#' @return A tibble with one row of network-level metrics.
-calculate_network_metrics <- function(web_matrix) {
-  
-  # Ensure matrix has at least 2 rows and 2 columns
-  if (nrow(web_matrix) < 2 | ncol(web_matrix) < 2) {
-    return(NULL) 
-  }
-  
-  # Remove empty rows/columns (species that are isolated)
-  web_matrix <- web_matrix[rowSums(web_matrix) > 0, colSums(web_matrix) > 0, drop = FALSE]
-  
-  # Check again after pruning
-  if (nrow(web_matrix) < 2 | ncol(web_matrix) < 2) {
-    return(NULL)
-  }
-  
-  tryCatch({
-    # Calculate network-level metrics
-    metrics <- networklevel(web_matrix, index = c(
-      "connectance", "links per species", "cluster coefficient", 
-      "nestedness", "robustness"
-    ))
     
-    # Calculate node-level metrics to get generality/vulnerability
-    node_metrics <- specieslevel(web_matrix, index = c("generality", "vulnerability"))
-    
-    # Create the result tibble
-    result <- tibble(
-      n_consumers = ncol(web_matrix),
-      n_resources = nrow(web_matrix),
-      n_links = sum(web_matrix),
-      connectance = metrics["connectance"],
-      links_per_species = metrics["links per species"],
-      cluster_coefficient = metrics["cluster coefficient"],
-      nestedness = metrics["nestedness"],
-      robustness_consumers = metrics["robustness.high"], # Robustness to consumer loss
-      robustness_resources = metrics["robustness.low"],  # Robustness to resource loss
-      mean_generality = mean(node_metrics$generality, na.rm = TRUE),
-      mean_vulnerability = mean(node_metrics$vulnerability, na.rm = TRUE)
-    )
-    return(result)
-    
-  }, error = function(e) {
-    print(paste("Error in metric calculation:", e$message))
-    return(NULL)
-  })
-}
-
-
-# ----------------------------------------------------------------------------
-# PART 5: RECONSTRUCTION PARAMETERS
-# Define model parameters and number of replicates.
-# ----------------------------------------------------------------------------
-
-# Parameters from Nascimento et al. (2024, Fig. 2b)
-# logit(P(i,j)) = a + b * (log10(Mass_i) - log10(Mass_j))
-PARAM_A <- -0.34
-PARAM_B <- 1.63
-
-# Number of replicated networks to generate per site/time bin
-N_REPS <- 100
-
-
-# ----------------------------------------------------------------------------
-# PART 6: MAIN ANALYSIS LOOP
-# Reconstruct networks for each locality and time bin.
-# ----------------------------------------------------------------------------
-
-print("Starting network reconstruction loop...")
-
-# Get all unique localities to loop through
-all_localities <- species_by_locality %>%
-  select(time_bin, locality) %>%
-  distinct()
-
-# List to store all results
-all_metrics_results <- list()
-all_network_plots <- list()
-
-for (i in 1:nrow(all_localities)) {
-  
-  current_locality <- all_localities$locality[i]
-  current_time_bin <- all_localities$time_bin[i]
-  
-  cat(paste0("\nProcessing: ", current_locality, " (", current_time_bin, ") ...\n"))
-  
-  # 1. Get species for this locality
-  current_species_list <- species_by_locality %>%
-    filter(locality == current_locality, time_bin == current_time_bin) %>%
-    pull(trophic_species)
-  
-  # Get all nodes present (for plotting)
-  all_nodes <- traits %>%
-    filter(trophic_species %in% current_species_list) %>%
-    mutate(
-      short_name = str_replace(trophic_species, "_", ". "),
-      Category = class, # Use 'class' for color mapping
-      is_human_node = (trophic_species == "Homo_sapiens")
-    )
-  
-  # 2. Calculate interaction probabilities
-  prob_edges <- calculate_interaction_probabilities(
-    species_list = current_species_list,
-    traits_df = traits,
-    a_param = PARAM_A,
-    b_param = PARAM_B
-  )
-  
-  if (is.null(prob_edges) || nrow(prob_edges) == 0) {
-    cat("  -> Skipping (no interactions predicted).\n")
-    next
-  }
-  
-  # 3. Run Replicates
-  replicate_metrics <- list()
-  for (j in 1:N_REPS) {
-    
-    # Generate a binary web based on probabilities
-    binary_edges <- prob_edges %>%
-      mutate(interacts = rbinom(n(), 1, Int_prob)) %>%
-      filter(interacts == 1)
-    
-    if (nrow(binary_edges) == 0) {
+    # If no habitat overlap, skip to next pair
+    if (habitat_overlap == 0) {
+      results_list[[i]] <- data.frame(
+        Consumer = pair$consumer_species,
+        Resource = pair$resource_species,
+        Int_prob = 0.0
+      )
       next
     }
     
-    # Convert to adjacency matrix
-    web_graph <- igraph::graph_from_data_frame(binary_edges, directed = TRUE, vertices = all_nodes)
-    web_matrix <- igraph::as_adjacency_matrix(web_graph, sparse = FALSE, attr = NULL)
+    # --- B. Apply Interaction Model (Habitat Overlaps) ---
     
-    # Bipartite functions expect (rows=resources, cols=consumers)
-    consumers_names <- all_nodes %>% 
-      filter(feeding_strategy %in% c("Carnivore", "Omnivore")) %>% pull(trophic_species)
-    resources_names <- all_nodes %>% 
-      filter(feeding_strategy %in% c("Herbivore", "Omnivore") | carrion_only == 1) %>% pull(trophic_species)
+    prob <- 0.0 # Initialize probability
     
-    # Get intersection of names that are in the matrix
-    consumers_in_matrix <- intersect(consumers_names, colnames(web_matrix))
-    resources_in_matrix <- intersect(resources_names, rownames(web_matrix))
+    # *** MERGED MODEL LOGIC ***
     
-    # Subset matrix
-    bipartite_matrix <- web_matrix[resources_in_matrix, consumers_in_matrix, drop = FALSE]
-    
-    # Calculate metrics for this replicate
-    metrics_rep <- calculate_network_metrics(bipartite_matrix)
-    
-    if (!is.null(metrics_rep)) {
-      replicate_metrics[[j]] <- metrics_rep
+    # Rule 1: Special scavenging interaction (overrides body mass)
+    if (pair$scav_c == 1 && pair$carrion_r == 1) {
+      
+      prob <- 1.0 # Force this interaction
+      
+      # Rule 2: Check for missing body size data *before* comparison
+      # If either body size is NA, we can't use the model, so prob = 0
+    } else if (is.na(pair$log10_c) || is.na(pair$log10_r)) {
+      
+      prob <- 0.0 # Cannot model interaction if body size is missing
+      
+      # Rule 3: Standard interaction (falls back to STOCHASTIC body mass model)
+      # This block is now safe because we've already checked for NAs
+    } else if (pair$log10_c > pair$log10_r) {
+      
+      log_ratio <- pair$log10_c - pair$log10_r
+      
+      # Use the correct parameters based on consumer strategy
+      if (pair$consumer == "Carnivore") {
+        # Use Carnivore (P) parameters
+        z <- model_params$alphaP + model_params$betaP * log_ratio + model_params$gammaP * (log_ratio^2)
+        prob <- exp(z) / (1 + exp(z))
+        
+      } else { # This handles "Omnivore"
+        # Use Omnivore (O) parameters
+        z <- model_params$alphaO + model_params$betaO * log_ratio + model_params$gammaO * (log_ratio^2)
+        prob <- exp(z) / (1 + exp(z))
+      }
+      
+      # Rule 4: No interaction (consumer < resource or not meeting other rules)
+    } else {
+      prob <- 0.0
     }
+    
+    # --- C. Store Result ---
+    results_list[[i]] <- data.frame(
+      Consumer = pair$consumer_species,
+      Resource = pair$resource_species,
+      Int_prob = prob # Final probability (habitat was already checked)
+    )
   }
   
-  if (length(replicate_metrics) == 0) {
-    cat("  -> Skipping (no links in replicates).\n")
-    next
+  # Combine all results
+  final_links <- bind_rows(results_list) %>%
+    filter(Int_prob > 0)
+  
+  return(final_links)
+}
+
+
+# ----------------------------------------------------------------------------
+# PART 6: METRIC CALCULATION
+# Helper functions to calculate metrics for a single *weighted* network.
+# ----------------------------------------------------------------------------
+
+# Function to calculate network metrics using 'bipartite'
+calculate_metrics <- function(adj_matrix) {
+  
+  # *** UPDATED ***: NO binarization. Use the raw probability matrix.
+  
+  # Remove empty rows/columns
+  adj_matrix_weighted <- adj_matrix[rowSums(adj_matrix) > 0, , drop = FALSE]
+  adj_matrix_weighted <- adj_matrix_weighted[, colSums(adj_matrix_weighted) > 0, drop = FALSE]
+  
+  if (nrow(adj_matrix_weighted) < 2 | ncol(adj_matrix_weighted) < 2) {
+    # Network is too small
+    return(
+      tibble(
+        n_consumers = nrow(adj_matrix_weighted),
+        n_resources = ncol(adj_matrix_weighted),
+        n_nodes = nrow(adj_matrix_weighted) + ncol(adj_matrix_weighted),
+        connectance = NA, links_per_species = NA, 
+        weighted_nestedness = NA, modularity = NA, 
+        generality = NA, vulnerability = NA
+      )
+    )
   }
   
-  # 4. Aggregate metrics for this locality
-  locality_metrics <- bind_rows(replicate_metrics) %>%
-    mutate(
-      locality = current_locality,
-      time_bin = current_time_bin,
-      .before = 1
-    )
+  # Calculate metrics using bipartite
+  # Note: Modularity calculation can sometimes fail
+  mod <- try(computeModules(adj_matrix_weighted), silent = TRUE)
+  mod_value <- if (inherits(mod, "try-error")) NA else mod@likelihood
   
-  all_metrics_results[[i]] <- locality_metrics
-  
-  # 5. Generate and save average network plot
-  cat("  -> Generating network plot.\n")
-  
-  # Use tidygraph for plotting the *probabilistic* web
-  plot_nodes <- all_nodes
-  plot_edges <- prob_edges %>%
-    mutate(
-      # Highlight human interactions
-      is_human_interaction = (from == "Homo_sapiens" | to == "Homo_sapiens")
-    )
-  
-  # Check if there are any nodes left after filtering
-  nodes_in_edges <- unique(c(plot_edges$from, plot_edges$to))
-  plot_nodes_filtered <- plot_nodes %>% filter(trophic_species %in% nodes_in_edges)
-  
-  if (nrow(plot_nodes_filtered) == 0 || nrow(plot_edges) == 0) {
-    cat("  -> Skipping plot (no nodes or edges after filtering).\n")
-    next
-  }
-  
-  tidy_web <- tbl_graph(nodes = plot_nodes_filtered, edges = plot_edges, directed = TRUE)
-  
-  # Create the ggraph plot
-  net_plot <- ggraph(tidy_web, layout = 'kk') +
-    geom_edge_fan(aes(alpha = Int_prob, color = Int_prob, filter = !is_human_interaction), width = 0.5) +
-    # Highlight human interactions
-    geom_edge_fan(aes(alpha = Int_prob, filter = is_human_interaction), color = "red", width = 1.2) +
-    geom_node_point(aes(fill = Category, filter = !is_human_node), shape = 21, color = "black", size = 5, stroke = 0.5) +
-    # Highlight human node
-    geom_node_point(aes(fill = Category, filter = is_human_node), shape = 21, color = "black", size = 7, stroke = 1.5) +
-    geom_node_text(aes(label = short_name), repel = TRUE, size = 2.5, max.overlaps = 35, bg.colour = "white", segment.color = 'grey50') +
-    scale_fill_manual(values = taxa_colors, name = "Taxonomic Category", na.value = "grey50", limits = names(taxa_colors), drop = FALSE) +
-    scale_edge_color_gradientn(colors = viridis::magma(256, direction = -1), name = "Interaction Prob.", limits = c(0,1)) +
-    scale_edge_alpha(guide = 'none') +
-    scale_y_continuous(expand = expansion(mult = 0.4)) + 
-    theme_graph(base_family = 'sans') +
-    theme(legend.position = "bottom", plot.margin = unit(c(0.5, 0.5, 0.5, 0.5), "cm")) +
-    labs(
-      title = paste("Probabilistic Food Web:", current_locality),
-      subtitle = paste("Time Bin:", current_time_bin)
-    )
-  
-  all_network_plots[[current_locality]] <- net_plot
-  
-  # Save the plot
-  ggsave(
-    filename = paste0("output/network_plot_", make_clean_names(current_locality), ".png"),
-    plot = net_plot,
-    width = 10,
-    height = 10,
-    dpi = 300
+  # *** UPDATED ***: Corrected metric calls
+  metrics <- networklevel(
+    adj_matrix_weighted,
+    index = c("connectance", "links per species", "weighted nestedness")
   )
+  
+  # *** UPDATED ***: Generality and Vulnerability are separate functions
+  # We take the mean to get a network-level value
+  gen <- try(mean(generality.HL(adj_matrix_weighted), na.rm = TRUE), silent = TRUE)
+  vul <- try(mean(vulnerability.LL(adj_matrix_weighted), na.rm = TRUE), silent = TRUE)
+  
+  gen_value <- if (inherits(gen, "try-error")) NA else gen
+  vul_value <- if (inherits(vul, "try-error")) NA else vul
+  
+  # Return metrics as a tibble
+  return(tibble(
+    n_consumers = nrow(adj_matrix_weighted),
+    n_resources = ncol(adj_matrix_weighted),
+    n_nodes = nrow(adj_matrix_weighted) + ncol(adj_matrix_weighted),
+    connectance = metrics["connectance"],
+    links_per_species = metrics["links per species"],
+    weighted_nestedness = metrics["weighted nestedness"],
+    modularity = mod_value,
+    generality = gen_value,
+    vulnerability = vul_value
+  ))
 }
-
-print("...Reconstruction loop finished.")
 
 
 # ----------------------------------------------------------------------------
-# PART 7: AGGREGATE AND SAVE RESULTS
-# Combine all replicate metrics into final summary tables.
+# PART 7: MAIN ANALYSIS LOOP
+# Run the analysis 'n_reps' times.
+# Loops over aggregated bins, not localities.
 # ----------------------------------------------------------------------------
 
-print("Aggregating results...")
+n_reps <- 100 # Number of replicates (set to 100)
 
-# Ensure 'output' directory exists
-if (!dir.exists("output")) {
-  dir.create("output")
+# This function runs the full analysis for ONE replicate
+run_analysis <- function(splocs_table, traits) {
+  
+  # Get ONE set of random parameters for this ENTIRE replicate
+  model_params <- get_stochastic_params()
+  
+  # This iterates over each row of the AGGREGATED splocs_agg tibble
+  metrics_per_bin <- map_dfr(1:nrow(splocs_table), function(i) {
+    
+    # Get the time_bin, region, and species list for this row
+    focal_time_bin <- splocs_table$time_bin[i]
+    focal_region <- splocs_table$region_col[i]
+    species_names <- splocs_table$species_list[[i]]
+    
+    # Get the trait data for *only* the species in this aggregated bin
+    sp_traits <- traits %>%
+      filter(trophic_species %in% species_names)
+    
+    # Reconstruct the network for this bin
+    # We pass the STOCHASTIC model_params for this replicate
+    net_links <- reconstruct_network(sp_traits, model_params, focal_habitat = "Ter-Mar")
+    
+    # Convert to an adjacency matrix for bipartite
+    consumers <- unique(net_links$Consumer)
+    resources <- unique(net_links$Resource)
+    
+    adj_matrix <- matrix(0, 
+                         nrow = length(consumers), 
+                         ncol = length(resources),
+                         dimnames = list(consumers, resources))
+    
+    # Fill the matrix with probabilities
+    if(nrow(net_links) > 0) {
+      for (k in 1:nrow(net_links)) {
+        adj_matrix[net_links$Consumer[k], net_links$Resource[k]] <- net_links$Int_prob[k]
+      }
+    }
+    
+    # Calculate metrics on the weighted matrix
+    metrics_tibble <- calculate_metrics(adj_matrix)
+    
+    # Add identifying info and return
+    return(
+      metrics_tibble %>%
+        mutate(
+          time_bin = focal_time_bin,
+          region_col = focal_region
+        )
+    )
+  })
+  
+  return(metrics_per_bin)
 }
 
-# Bind all locality results together
-final_metrics_all_reps <- bind_rows(all_metrics_results)
+# --- Run the main loop ---
+print(paste("Running analysis for", n_reps, "replicates..."))
+start_time <- Sys.time()
 
-# Save the raw replicate data
-write_csv(final_metrics_all_reps, "output/TDF_all_replicates_metrics.csv")
+# Use map_dfr to run the analysis 'n_reps' times
+# We pass the AGGREGATED 'splocs_agg' tibble
+final_metrics_all_reps <- map_dfr(
+  1:n_reps,
+  ~run_analysis(splocs_agg, traits), # Pass the aggregated splocs
+  .id = "rep"
+)
 
-# Create a summary table (mean, sd, 95% CI) for each metric
+end_time <- Sys.time()
+print(paste("Analysis complete. Time taken:", round(difftime(end_time, start_time, units = "secs"), 1), "seconds"))
+
+# ----------------------------------------------------------------------------
+# PART 8: SUMMARIZE METRICS
+# Aggregate the results from all replicates.
+# Summarizes by bin, not locality.
+# ----------------------------------------------------------------------------
+
+print("Summarizing metrics...")
+
+# This block calculates the mean, sd, and 95% CIs for all metrics,
+# grouped by time_bin and region_col.
 metrics_summary <- final_metrics_all_reps %>%
   pivot_longer(
-    cols = -(c(locality, time_bin)),
+    cols = -(c(rep, time_bin, region_col)), 
     names_to = "metric",
     values_to = "value"
   ) %>%
-  group_by(time_bin, locality, metric) %>%
+  group_by(time_bin, region_col, metric) %>% 
   summarise(
     n = n(),
     mean = mean(value, na.rm = TRUE),
@@ -519,71 +448,280 @@ metrics_summary <- final_metrics_all_reps %>%
   ) %>%
   ungroup()
 
-# Save the summary table
-write_csv(metrics_summary, "output/TDF_summary_metrics.csv")
+# --- Save Results ---
+output_dir <- "results"
+if (!dir.exists(output_dir)) {
+  dir.create(output_dir)
+}
 
-print("...Results saved to 'output' folder.")
-
-
-# ----------------------------------------------------------------------------
-# PART 8: VISUALIZATION (SUMMARY PLOTS)
-# Create summary boxplots comparing metrics across time bins.
-# ----------------------------------------------------------------------------
-
-print("Generating summary plots...")
-
-# --- Plot 1: Connectance ---
-p_conn <- final_metrics_all_reps %>%
-  ggplot(aes(x = time_bin, y = connectance, fill = time_bin)) +
-  geom_boxplot() +
-  labs(title = "Network Connectance by Time Bin", x = "Time Bin", y = "Connectance") +
-  theme_minimal() +
-  theme(legend.position = "none")
-
-# --- Plot 2: Links per Species ---
-p_links <- final_metrics_all_reps %>%
-  ggplot(aes(x = time_bin, y = links_per_species, fill = time_bin)) +
-  geom_boxplot() +
-  labs(title = "Links per Species by Time Bin", x = "Time Bin", y = "Links / Species") +
-  theme_minimal() +
-  theme(legend.position = "none")
-
-# --- Plot 3: Robustness ---
-p_robust <- final_metrics_all_reps %>%
-  pivot_longer(
-    cols = c(robustness_consumers, robustness_resources),
-    names_to = "robustness_type",
-    values_to = "value"
-  ) %>%
-  mutate(
-    robustness_type = ifelse(
-      robustness_type == "robustness_consumers", 
-      "To Consumer Loss", "To Resource Loss"
-    )
-  ) %>%
-  ggplot(aes(x = time_bin, y = value, fill = robustness_type)) +
-  geom_boxplot() +
-  labs(title = "Network Robustness by Time Bin", x = "Time Bin", y = "Robustness") +
-  theme_minimal() +
-  theme(legend.position = "bottom")
-
-# --- Combine plots ---
-summary_plot <- (p_conn | p_links) / p_robust +
-  plot_annotation(
-    title = "TDF Food Web Metrics Comparison",
-    tag_levels = 'A'
-  )
-
-# Save the summary plot
-ggsave(
-  filename = "output/TDF_summary_plots.png",
-  plot = summary_plot,
-  width = 12,
-  height = 8,
-  dpi = 300
+write_csv(
+  final_metrics_all_reps, 
+  file.path(output_dir, paste0(today_date, "_TDF_all_replicates_metrics_AGGREGATED.csv"))
+)
+write_csv(
+  metrics_summary, 
+  file.path(output_dir, paste0(today_date, "_TDF_summary_metrics_AGGREGATED.csv"))
 )
 
-print("--- Analysis Complete ---")
+print(paste("Results saved to", output_dir, "directory."))
 
 
+# ----------------------------------------------------------------------------
+# PART 9: PLOT METRICS
+# *** COMPLETELY REVISED ***
+# This part now plots all 100 replicates from 'final_metrics_all_reps'
+# and uses 'facet_grid' to create a plot matrix similar to the desired PDF.
+# ----------------------------------------------------------------------------
 
+print("Generating plots...")
+
+# --- 1. Define the correct order for time bins ---
+time_order <- c("Pleistoceno final", "Holoceno medio", "Holoceno final", "Histórico")
+
+# --- 2. Prepare the data for plotting ---
+plot_data_metrics <- final_metrics_all_reps %>%
+  # Pivot all metrics into a single column
+  pivot_longer(
+    cols = c(connectance, links_per_species, weighted_nestedness, modularity, generality, vulnerability),
+    names_to = "metric",
+    values_to = "value"
+  ) %>%
+  # Ensure factors are in the correct order for plotting
+  mutate(
+    time_bin = factor(time_bin, levels = time_order),
+    metric = factor(metric, levels = c("connectance", "links_per_species", "weighted_nestedness", "modularity", "generality", "vulnerability"))
+  ) %>%
+  # Remove any NA values that would break plotting
+  filter(!is.na(value))
+
+# --- 3. Create the multi-faceted plot ---
+combined_plot <- ggplot(plot_data_metrics, aes(x = time_bin, y = value, fill = region_col)) +
+  # Use geom_boxplot, which will show the distribution of the 100 replicates
+  geom_boxplot(position = position_dodge(width = 0.8), width = 0.7) +
+  
+  # *** This is the key change ***
+  # Use facet_grid to create rows of metrics and columns of regions
+  # scales = "free_y" allows each metric to have its own y-axis
+  facet_grid(metric ~ region_col, scales = "free_y", switch = "y") +
+  
+  # Add labels and titles
+  labs(
+    title = "Tierra del Fuego Aggregated Network Metrics",
+    subtitle = "Boxplots show distribution of 100 stochastic replicates",
+    x = "Geological Age",
+    y = "Metric Value",
+    fill = "Region"
+  ) +
+  
+  # Apply themes
+  theme_minimal() +
+  theme(
+    legend.position = "bottom",
+    # Rotate x-axis labels
+    axis.text.x = element_text(angle = 45, hjust = 1),
+    # Move the metric labels (on the left) to be outside the plot
+    strip.placement = "outside",
+    strip.text.y = element_text(angle = 0, face = "bold"),
+    strip.text.x = element_text(face = "bold"),
+    # Add a border
+    panel.border = element_rect(color = "grey80", fill = NA)
+  )
+
+# --- 4. Save the plot ---
+ggsave(
+  file.path(output_dir, paste0(today_date, "_TDF_metrics_boxplots_AGGREGATED.png")),
+  combined_plot,
+  width = 8, # Narrower plot is better for this grid
+  height = 12, # Taller plot to accommodate all metric rows
+  dpi = 300,
+  bg = "white"
+)
+
+print(paste("Metric boxplots saved to", output_dir, "directory."))
+
+
+# ----------------------------------------------------------------------------
+# PART 10: GENERATE INDIVIDUAL NETWORK PLOTS
+# *** COMPLETELY REVISED ***
+# This part now generates a true bipartite plot by duplicating nodes
+# that are both consumers and resources (e.g., omnivores).
+# ----------------------------------------------------------------------------
+
+print("Generating individual network plots...")
+
+# --- 1. Helper function to shorten names ---
+shorten_name <- function(species_name) {
+  parts <- str_split(species_name, "_")[[1]]
+  if (length(parts) == 2) {
+    # e.g., "Homo_sapiens" -> "H. sapiens"
+    return(paste0(str_sub(parts[1], 1, 1), ". ", parts[2]))
+  } else {
+    # e.g., "Cricetidae" -> "Cricetidae"
+    return(species_name)
+  }
+}
+
+# --- 2. Define color palette ---
+taxa_colors <- c(
+  "Mammalia" = "#7f3b08",
+  "Aves" = "#b35806",
+  "Actinopterygii" = "#e08214",
+  "Chondrichthyes" = "#fdb863",
+  "Malacostraca" = "#fee0b6",
+  "Bivalvia" = "#d8daeb",
+  "Gastropoda" = "#b2abd2",
+  "Cephalopoda" = "#8073ac",
+  "Echinoidea" = "#542788",
+  "Other" = "grey50"
+)
+
+# --- 3. Define mean parameters for representative plot ---
+mean_params <- list(
+  alphaP = mean(c(1, 2)),
+  betaP = mean(c(-2, -1)),
+  gammaP = mean(c(-1, -0.5)),
+  alphaO = mean(c(-6, -4)),
+  betaO = mean(c(-3, -2)),
+  gammaO = 0
+)
+
+# --- 4. Define the main plotting function ---
+# This function is now designed for a true bipartite layout
+plot_network_bipartite <- function(graph, title) {
+  
+  # Create the bipartite layout
+  layout <- create_layout(graph, layout = 'bipartite')
+  
+  # Manually set y-coordinates: resources (type=FALSE) at y=0, consumers (type=TRUE) at y=1
+  layout$y <- ifelse(layout$type, 1, 0)
+  
+  ggraph(layout) +
+    # Draw edges
+    # Non-human interactions
+    geom_edge_fan(aes(alpha = Int_prob, color = Int_prob, filter = !is_human_interaction), width = 0.5) +
+    # Human interactions (plotted on top)
+    geom_edge_fan(aes(alpha = Int_prob, filter = is_human_interaction), color = "red", width = 1.0) +
+    
+    # Draw nodes
+    # Non-human nodes
+    geom_node_point(aes(fill = Category, filter = !is_human_node), shape = 21, color = "black", size = 5, stroke = 0.5) +
+    # Human nodes (both consumer and resource)
+    geom_node_point(aes(fill = Category, filter = is_human_node), shape = 21, color = "red", size = 7, stroke = 1.5) +
+    
+    # Draw labels
+    geom_node_text(aes(label = short_name), repel = TRUE, size = 2.5, max.overlaps = 35, 
+                   bg.colour = "white", bg.r = 0.1, segment.color = 'grey50') +
+    
+    # Scales
+    scale_fill_manual(values = taxa_colors, name = "Taxonomic Category", na.value = "grey50", limits = names(taxa_colors), drop = FALSE) +
+    scale_edge_color_gradientn(colors = viridis::magma(256, direction = -1, begin = 0.1), name = "Interaction Prob.", limits = c(0,1)) +
+    scale_edge_alpha(guide = 'none') +
+    scale_y_continuous(expand = expansion(mult = 0.4)) + # Add space for labels
+    
+    # Theme
+    theme_graph(base_family = 'sans') +
+    theme(
+      legend.position = "bottom",
+      plot.margin = unit(c(0.5, 0.5, 0.5, 0.5), "cm"),
+      plot.title = element_text(hjust = 0.5, size = 16)
+    ) +
+    labs(title = title)
+}
+
+
+# --- 5. Prepare data and loop through plots ---
+
+# Create a data frame with all data needed for plotting
+plot_data_prep <- splocs_agg %>%
+  mutate(
+    # Get the species traits for each bin
+    sp_traits = map(species_list, ~traits %>% filter(trophic_species %in% .x)),
+    
+    # --- *** CRITICAL NEW LOGIC FOR BIPARTITE PLOTS *** ---
+    
+    # Generate the single representative link list
+    links_df = map(sp_traits, ~reconstruct_network(.x, mean_params) %>%
+                     filter(Int_prob > 0) %>%
+                     mutate(
+                       # Create 'from' and 'to' names for the duplicated nodes
+                       from = paste0(Consumer, "_C"), # e.g., "Homo_sapiens_C"
+                       to = paste0(Resource, "_R"),   # e.g., "Lama_guanicoe_R"
+                       # Identify human interactions for special plotting
+                       is_human_interaction = (Consumer == "Homo_sapiens" | Resource == "Homo_sapiens")
+                     )
+    ),
+    
+    # Create the nodes data frame by duplicating omnivores
+    nodes_df = map2(sp_traits, links_df, function(st, links) {
+      
+      # Define consumer and resource names *from the links*
+      consumer_names <- unique(links$Consumer)
+      resource_names <- unique(links$Resource)
+      
+      # 1. Create consumer nodes (top layer)
+      nodes_C <- st %>%
+        filter(trophic_species %in% consumer_names) %>%
+        mutate(
+          name = paste0(trophic_species, "_C"), # Duplicated name
+          type = TRUE # Bipartite layout type (top layer)
+        )
+      
+      # 2. Create resource nodes (bottom layer)
+      nodes_R <- st %>%
+        filter(trophic_species %in% resource_names) %>%
+        mutate(
+          name = paste0(trophic_species, "_R"), # Duplicated name
+          type = FALSE # Bipartite layout type (bottom layer)
+        )
+      
+      # 3. Combine them. Omnivores will now appear in both dataframes.
+      bind_rows(nodes_C, nodes_R) %>%
+        mutate(
+          # Create 'Category' for colors
+          Category = if_else(class %in% names(taxa_colors), class, "Other"),
+          # Create short names for labels (from original species name)
+          short_name = map_chr(trophic_species, shorten_name),
+          # Identify human nodes
+          is_human_node = (trophic_species == "Homo_sapiens")
+        ) %>%
+        # Ensure 'name' is the first column for tbl_graph
+        select(name, short_name, type, Category, is_human_node, everything())
+    }),
+    
+    # --- End of new logic ---
+    
+    # Create title and filename
+    plot_title = paste0("Aggregated Network: ", time_bin, " - ", region_col),
+    file_name = file.path(output_dir, paste0(today_date, "_NetworkPlot_", time_bin, "_", region_col, ".png"))
+  )
+
+# Use pwalk to iterate and save each plot
+pwalk(plot_data_prep, function(nodes_df, links_df, plot_title, file_name, ...) {
+  
+  print(paste("Plotting:", plot_title))
+  
+  # Check if there are any nodes or links
+  if (nrow(nodes_df) == 0 || nrow(links_df) == 0) {
+    print(paste("Skipping plot for", plot_title, "due to no nodes or links."))
+    return()
+  }
+  
+  # Create graph object
+  g <- tbl_graph(nodes = nodes_df, edges = links_df, directed = TRUE)
+  
+  # Generate the plot using the new bipartite function
+  final_plot <- plot_network_bipartite(g, plot_title)
+  
+  # Save the plot
+  ggsave(
+    filename = file_name,
+    plot = final_plot,
+    width = 14,
+    height = 10,
+    dpi = 300,
+    bg = "white"
+  )
+})
+
+print(paste("Network plots saved to", output_dir, "directory."))
+print("--- SCRIPT FINISHED ---")

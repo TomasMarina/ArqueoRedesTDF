@@ -1,0 +1,55 @@
+time_bin,region_col,metric,n,mean,sd,q025,q975
+Histórico,Bosque,connectance,100,NA,NA,NA,NA
+Histórico,Bosque,generality,100,NA,NA,NA,NA
+Histórico,Bosque,links_per_species,100,NA,NA,NA,NA
+Histórico,Bosque,modularity,100,NA,NA,NA,NA
+Histórico,Bosque,n_consumers,100,0,0,0,0
+Histórico,Bosque,n_nodes,100,0,0,0,0
+Histórico,Bosque,n_resources,100,0,0,0,0
+Histórico,Bosque,vulnerability,100,NA,NA,NA,NA
+Histórico,Bosque,weighted_nestedness,100,NA,NA,NA,NA
+Histórico,Estepa,connectance,100,NA,NA,NA,NA
+Histórico,Estepa,generality,100,NA,NA,NA,NA
+Histórico,Estepa,links_per_species,100,NA,NA,NA,NA
+Histórico,Estepa,modularity,100,NA,NA,NA,NA
+Histórico,Estepa,n_consumers,100,0,0,0,0
+Histórico,Estepa,n_nodes,100,0,0,0,0
+Histórico,Estepa,n_resources,100,0,0,0,0
+Histórico,Estepa,vulnerability,100,NA,NA,NA,NA
+Histórico,Estepa,weighted_nestedness,100,NA,NA,NA,NA
+Holoceno final,Bosque,connectance,100,0.3137254901960784,0,0.3137254901960784,0.3137254901960784
+Holoceno final,Bosque,generality,100,NA,NA,NA,NA
+Holoceno final,Bosque,links_per_species,100,1.8461538461538463,0,1.8461538461538463,1.8461538461538463
+Holoceno final,Bosque,modularity,100,0.3233939633668261,0.0033735390076633314,0.3193898253720882,0.33430100236249827
+Holoceno final,Bosque,n_consumers,100,17,0,17,17
+Holoceno final,Bosque,n_nodes,100,26,0,26,26
+Holoceno final,Bosque,n_resources,100,9,0,9,9
+Holoceno final,Bosque,vulnerability,100,NA,NA,NA,NA
+Holoceno final,Bosque,weighted_nestedness,100,0.7448404014946145,0.010112347699851235,0.72727212531931,0.7672631646133146
+Holoceno final,Estepa,connectance,100,0.35699797160243407,0,0.35699797160243407,0.35699797160243407
+Holoceno final,Estepa,generality,100,NA,NA,NA,NA
+Holoceno final,Estepa,links_per_species,100,3.8260869565217392,0,3.8260869565217392,3.8260869565217392
+Holoceno final,Estepa,modularity,100,0.40279101903486525,0.01804185971537299,0.36120352411108436,0.4355958436109958
+Holoceno final,Estepa,n_consumers,100,29,0,29,29
+Holoceno final,Estepa,n_nodes,100,46,0,46,46
+Holoceno final,Estepa,n_resources,100,17,0,17,17
+Holoceno final,Estepa,vulnerability,100,NA,NA,NA,NA
+Holoceno final,Estepa,weighted_nestedness,100,0.021423827630146948,0.02000752409075722,-0.014178592343037826,0.06921460853216842
+Holoceno medio,Estepa,connectance,100,0.3416666666666667,0,0.3416666666666667,0.3416666666666667
+Holoceno medio,Estepa,generality,100,NA,NA,NA,NA
+Holoceno medio,Estepa,links_per_species,100,2.5625,0,2.5625,2.5625
+Holoceno medio,Estepa,modularity,100,0.42483265720150426,0.006679002591608316,0.40658187327251927,0.43462030877264585
+Holoceno medio,Estepa,n_consumers,100,20,0,20,20
+Holoceno medio,Estepa,n_nodes,100,32,0,32,32
+Holoceno medio,Estepa,n_resources,100,12,0,12,12
+Holoceno medio,Estepa,vulnerability,100,NA,NA,NA,NA
+Holoceno medio,Estepa,weighted_nestedness,100,0.15087038502695455,0.0193652443727842,0.11629118156968091,0.1920866817129312
+Pleistoceno final,Estepa,connectance,100,0.5333333333333333,0,0.5333333333333333,0.5333333333333333
+Pleistoceno final,Estepa,generality,100,NA,NA,NA,NA
+Pleistoceno final,Estepa,links_per_species,100,1,0,1,1
+Pleistoceno final,Estepa,modularity,100,0.4114763435079929,0.008804031149236405,0.39746198094426693,0.425881184589195
+Pleistoceno final,Estepa,n_consumers,100,3,0,3,3
+Pleistoceno final,Estepa,n_nodes,100,8,0,8,8
+Pleistoceno final,Estepa,n_resources,100,5,0,5,5
+Pleistoceno final,Estepa,vulnerability,100,NA,NA,NA,NA
+Pleistoceno final,Estepa,weighted_nestedness,100,0.18341645355705877,0.025164832178220353,0.13710938358129016,0.23314211242063504
