@@ -3,14 +3,16 @@
 # R SCRIPT FOR RECONSTRUCTING ANCIENT CONSUMER-RESOURCE NETWORKS
 # (Tierra del Fuego Archaeological Study)
 #
-# Version: 301025-CorrectedPlots
+# Version: 041125-Final-MetricFix
 #
 # *** SCRIPT CORRECTIONS ***
-# 1. PART 9 (Boxplots): Now plots the raw 'final_metrics_all_reps' data (all 100
-#    replicates) and uses 'facet_grid' to match the desired PDF layout.
-# 2. PART 10 (Network Plots): Now correctly creates a true bipartite graph
-#    by DUPLICATING nodes (e.g., omnivores) that exist in both the
-#    consumer and resource layers, matching the desired PDF layout.
+# 1. PART 6 (Metrics): CORRECTED calculation for Generality/Vulnerability.
+#    They are now passed as indices to networklevel() as per the new vignette.
+#    This fixes the 'index not available' error.
+# 2. PART 9 (Boxplots): Correctly uses 'facet_wrap' and 'position_dodge'
+#    to place 'Bosque' and 'Estepa' side-by-side.
+# 3. PART 10 (Network Plots): Correctly uses 'geom_edge_link' for straight,
+#    parallel lines.
 #
 # ----------------------------------------------------------------------------
 
@@ -115,7 +117,6 @@ ages <- ages_raw %>%
   select(locality, time_bin = geological_ages, region_col) %>%
   distinct()
 
-# *** KEY CHANGE HERE ***
 # --- Create final species-by-AGGREGATED-unit dataset ---
 # This merges all localities that share the same time_bin and region_col.
 splocs_agg <- localities %>%
@@ -277,7 +278,7 @@ reconstruct_network <- function(sp_traits, model_params, focal_habitat = "Ter-Ma
   
   # Combine all results
   final_links <- bind_rows(results_list) %>%
-    filter(Int_prob > 0)
+    filter(Int_prob > 0.1) # *** THRESHOLD APPLIED HERE ***
   
   return(final_links)
 }
@@ -286,19 +287,21 @@ reconstruct_network <- function(sp_traits, model_params, focal_habitat = "Ter-Ma
 # ----------------------------------------------------------------------------
 # PART 6: METRIC CALCULATION
 # Helper functions to calculate metrics for a single *weighted* network.
+# *** THIS IS THE CORRECTED, STABLE VERSION ***
 # ----------------------------------------------------------------------------
 
 # Function to calculate network metrics using 'bipartite'
 calculate_metrics <- function(adj_matrix) {
   
-  # *** UPDATED ***: NO binarization. Use the raw probability matrix.
+  # NO binarization. Use the raw probability matrix.
   
   # Remove empty rows/columns
   adj_matrix_weighted <- adj_matrix[rowSums(adj_matrix) > 0, , drop = FALSE]
   adj_matrix_weighted <- adj_matrix_weighted[, colSums(adj_matrix_weighted) > 0, drop = FALSE]
   
+  # Check if network is too small AFTER filtering empty rows/cols
+  # We need at least 2 consumers and 2 resources for most metrics
   if (nrow(adj_matrix_weighted) < 2 | ncol(adj_matrix_weighted) < 2) {
-    # Network is too small
     return(
       tibble(
         n_consumers = nrow(adj_matrix_weighted),
@@ -316,19 +319,27 @@ calculate_metrics <- function(adj_matrix) {
   mod <- try(computeModules(adj_matrix_weighted), silent = TRUE)
   mod_value <- if (inherits(mod, "try-error")) NA else mod@likelihood
   
-  # *** UPDATED ***: Corrected metric calls
-  metrics <- networklevel(
+  # *** CORRECTED METRIC CALLS (as per new vignette) ***
+  # Call networklevel() for all indices it supports as strings
+  # This now includes generality and vulnerability
+  metrics <- try(networklevel(
     adj_matrix_weighted,
-    index = c("connectance", "links per species", "weighted nestedness")
-  )
+    index = c("connectance", "links per species", "weighted nestedness", "generality", "vulnerability")
+  ), silent = TRUE)
   
-  # *** UPDATED ***: Generality and Vulnerability are separate functions
-  # We take the mean to get a network-level value
-  gen <- try(mean(generality.HL(adj_matrix_weighted), na.rm = TRUE), silent = TRUE)
-  vul <- try(mean(vulnerability.LL(adj_matrix_weighted), na.rm = TRUE), silent = TRUE)
-  
-  gen_value <- if (inherits(gen, "try-error")) NA else gen
-  vul_value <- if (inherits(vul, "try-error")) NA else vul
+  # If the networklevel call fails (e.g., matrix is too sparse)
+  if (inherits(metrics, "try-error")) {
+    return(
+      tibble(
+        n_consumers = nrow(adj_matrix_weighted),
+        n_resources = ncol(adj_matrix_weighted),
+        n_nodes = nrow(adj_matrix_weighted) + ncol(adj_matrix_weighted),
+        connectance = NA, links_per_species = NA, 
+        weighted_nestedness = NA, modularity = mod_value, 
+        generality = NA, vulnerability = NA
+      )
+    )
+  }
   
   # Return metrics as a tibble
   return(tibble(
@@ -339,8 +350,8 @@ calculate_metrics <- function(adj_matrix) {
     links_per_species = metrics["links per species"],
     weighted_nestedness = metrics["weighted nestedness"],
     modularity = mod_value,
-    generality = gen_value,
-    vulnerability = vul_value
+    generality = metrics["generality"],
+    vulnerability = metrics["vulnerability"]
   ))
 }
 
@@ -468,9 +479,10 @@ print(paste("Results saved to", output_dir, "directory."))
 
 # ----------------------------------------------------------------------------
 # PART 9: PLOT METRICS
-# *** COMPLETELY REVISED ***
+# *** CORRECTED PLOT LOGIC ***
 # This part now plots all 100 replicates from 'final_metrics_all_reps'
-# and uses 'facet_grid' to create a plot matrix similar to the desired PDF.
+# and uses 'facet_wrap' and 'position_dodge' to place 'Bosque' and 'Estepa'
+# side-by-side, as requested.
 # ----------------------------------------------------------------------------
 
 print("Generating plots...")
@@ -492,22 +504,27 @@ plot_data_metrics <- final_metrics_all_reps %>%
     metric = factor(metric, levels = c("connectance", "links_per_species", "weighted_nestedness", "modularity", "generality", "vulnerability"))
   ) %>%
   # Remove any NA values that would break plotting
+  # This is why Generality/Vulnerability may be missing for some bins
   filter(!is.na(value))
 
 # --- 3. Create the multi-faceted plot ---
-combined_plot <- ggplot(plot_data_metrics, aes(x = time_bin, y = value, fill = region_col)) +
-  # Use geom_boxplot, which will show the distribution of the 100 replicates
-  geom_boxplot(position = position_dodge(width = 0.8), width = 0.7) +
+combined_plot <- ggplot(plot_data_metrics, aes(x = time_bin, y = value)) +
   
   # *** This is the key change ***
-  # Use facet_grid to create rows of metrics and columns of regions
-  # scales = "free_y" allows each metric to have its own y-axis
-  facet_grid(metric ~ region_col, scales = "free_y", switch = "y") +
+  # Use geom_boxplot with fill mapped to region_col and position_dodge
+  # This places "Bosque" and "Estepa" side-by-side
+  geom_boxplot(aes(fill = region_col), 
+               position = position_dodge(width = 0.9), # Dodge side-by-side
+               width = 0.8, # Width of boxes
+               outlier.shape = NA) + # Hide outliers for a cleaner plot
+  
+  # Use facet_wrap to create a separate panel for each METRIC
+  facet_wrap(~ metric, scales = "free_y", ncol = 2, strip.position = "left") +
   
   # Add labels and titles
   labs(
     title = "Tierra del Fuego Aggregated Network Metrics",
-    subtitle = "Boxplots show distribution of 100 stochastic replicates",
+    subtitle = "Boxplots show distribution of 100 stochastic replicates. (Prob > 0.1)",
     x = "Geological Age",
     y = "Metric Value",
     fill = "Region"
@@ -515,24 +532,27 @@ combined_plot <- ggplot(plot_data_metrics, aes(x = time_bin, y = value, fill = r
   
   # Apply themes
   theme_minimal() +
+  scale_fill_manual(values = c("Bosque" = "#1B9E77", "Estepa" = "#D95F02")) + # Colorblind-friendly
   theme(
     legend.position = "bottom",
     # Rotate x-axis labels
-    axis.text.x = element_text(angle = 45, hjust = 1),
+    axis.text.x = element_text(angle = 45, hjust = 1, size = 10),
+    axis.title = element_text(size = 12, face = "bold"),
     # Move the metric labels (on the left) to be outside the plot
     strip.placement = "outside",
-    strip.text.y = element_text(angle = 0, face = "bold"),
-    strip.text.x = element_text(face = "bold"),
+    strip.text.y = element_text(angle = 0, face = "bold", size = 10),
+    strip.text.x = element_blank(), # No titles on top
     # Add a border
-    panel.border = element_rect(color = "grey80", fill = NA)
+    panel.border = element_rect(color = "grey80", fill = NA),
+    panel.spacing = unit(1, "lines")
   )
 
 # --- 4. Save the plot ---
 ggsave(
   file.path(output_dir, paste0(today_date, "_TDF_metrics_boxplots_AGGREGATED.png")),
   combined_plot,
-  width = 8, # Narrower plot is better for this grid
-  height = 12, # Taller plot to accommodate all metric rows
+  width = 10, # Wider plot to accommodate side-by-side boxes
+  height = 10, # Taller plot for 3 rows of metrics
   dpi = 300,
   bg = "white"
 )
@@ -542,9 +562,10 @@ print(paste("Metric boxplots saved to", output_dir, "directory."))
 
 # ----------------------------------------------------------------------------
 # PART 10: GENERATE INDIVIDUAL NETWORK PLOTS
-# *** COMPLETELY REVISED ***
+# *** CORRECTED PLOT LOGIC ***
 # This part now generates a true bipartite plot by duplicating nodes
 # that are both consumers and resources (e.g., omnivores).
+# It uses 'geom_edge_link' for straight, clean lines.
 # ----------------------------------------------------------------------------
 
 print("Generating individual network plots...")
@@ -596,11 +617,12 @@ plot_network_bipartite <- function(graph, title) {
   layout$y <- ifelse(layout$type, 1, 0)
   
   ggraph(layout) +
-    # Draw edges
+    
+    # *** KEY CHANGE ***: Use geom_edge_link for straight lines
     # Non-human interactions
-    geom_edge_fan(aes(alpha = Int_prob, color = Int_prob, filter = !is_human_interaction), width = 0.5) +
+    geom_edge_link(aes(alpha = Int_prob, color = Int_prob, filter = !is_human_interaction), width = 0.5) +
     # Human interactions (plotted on top)
-    geom_edge_fan(aes(alpha = Int_prob, filter = is_human_interaction), color = "red", width = 1.0) +
+    geom_edge_link(aes(alpha = Int_prob, filter = is_human_interaction), color = "red", width = 1.0) +
     
     # Draw nodes
     # Non-human nodes
@@ -614,7 +636,7 @@ plot_network_bipartite <- function(graph, title) {
     
     # Scales
     scale_fill_manual(values = taxa_colors, name = "Taxonomic Category", na.value = "grey50", limits = names(taxa_colors), drop = FALSE) +
-    scale_edge_color_gradientn(colors = viridis::magma(256, direction = -1, begin = 0.1), name = "Interaction Prob.", limits = c(0,1)) +
+    scale_edge_color_gradientn(colors = viridis::magma(256, direction = -1, begin = 0.1), name = "Interaction Prob.", limits = c(0.1,1)) +
     scale_edge_alpha(guide = 'none') +
     scale_y_continuous(expand = expansion(mult = 0.4)) + # Add space for labels
     
@@ -641,7 +663,7 @@ plot_data_prep <- splocs_agg %>%
     
     # Generate the single representative link list
     links_df = map(sp_traits, ~reconstruct_network(.x, mean_params) %>%
-                     filter(Int_prob > 0) %>%
+                     filter(Int_prob > 0.1) %>% # Filter for prob > 0.1
                      mutate(
                        # Create 'from' and 'to' names for the duplicated nodes
                        from = paste0(Consumer, "_C"), # e.g., "Homo_sapiens_C"
@@ -685,7 +707,9 @@ plot_data_prep <- splocs_agg %>%
           is_human_node = (trophic_species == "Homo_sapiens")
         ) %>%
         # Ensure 'name' is the first column for tbl_graph
-        select(name, short_name, type, Category, is_human_node, everything())
+        select(name, short_name, type, Category, is_human_node, everything()) %>%
+        # Ensure no duplicate node names
+        distinct(name, .keep_all = TRUE)
     }),
     
     # --- End of new logic ---
@@ -703,6 +727,16 @@ pwalk(plot_data_prep, function(nodes_df, links_df, plot_title, file_name, ...) {
   # Check if there are any nodes or links
   if (nrow(nodes_df) == 0 || nrow(links_df) == 0) {
     print(paste("Skipping plot for", plot_title, "due to no nodes or links."))
+    return()
+  }
+  
+  # Ensure all nodes in links are also in nodes_df
+  all_nodes_in_links <- unique(c(links_df$from, links_df$to))
+  nodes_df <- nodes_df %>% filter(name %in% all_nodes_in_links)
+  
+  # Check again after filtering
+  if (nrow(nodes_df) == 0 || nrow(links_df) == 0) {
+    print(paste("Skipping plot for", plot_title, "due to no nodes or links after filtering."))
     return()
   }
   
@@ -725,3 +759,4 @@ pwalk(plot_data_prep, function(nodes_df, links_df, plot_title, file_name, ...) {
 
 print(paste("Network plots saved to", output_dir, "directory."))
 print("--- SCRIPT FINISHED ---")
+
