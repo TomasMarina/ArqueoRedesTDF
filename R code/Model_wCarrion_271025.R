@@ -3,16 +3,22 @@
 # R SCRIPT FOR RECONSTRUCTING ANCIENT CONSUMER-RESOURCE NETWORKS
 # (Tierra del Fuego Archaeological Study)
 #
-# Version: 081125-Final-Fixes
+# Version: 101125-Final-Fixes-v3
 #
 # *** SCRIPT CORRECTIONS ***
-# 1. PART 5 (reconstruct_network): ADDED new rule to allow human predation
-#    on large 'HumanResource' species, ignoring the body-mass check.
-#    This will fix the missing human interactions.
-# 2. PART 7 (run_analysis): The script now passes t(adj_matrix) to
-#    calculate_metrics. This transposes the matrix to the (Resources x Consumers)
-#    format required by the 'bipartite' package, which will fix the
-#    NA values for generality and vulnerability.
+# 1. PART 1: Added 'ggnewscale' package for plotting.
+# 2. PART 3 (DATA PREP): Using stable data cleaning for 1/0/NA columns.
+# 3. PART 5 (reconstruct_network): ADDED 'trophic_species != "Homo_sapiens"'
+#    to the 'resources' pool to permanently remove humans as prey.
+# 4. PART 5 (reconstruct_network): Kept 'Int_prob > 0' filter.
+# 5. PART 6 (calculate_metrics): THIS IS THE KEY FIX.
+#    - The function now correctly uses BOTH matrix orientations:
+#    - 'generality.HL' and 'vulnerability.LL' are called on the
+#      original (Consumers x Resources) matrix.
+#    - 'networklevel' and 'computeModules' are called on the
+#      transposed t(adj_matrix) (Resources x Consumers).
+#    - THIS WILL FIX THE MISSING GENERALITY/VULNERABILITY PLOTS.
+# 6. PART 10 (plot_network_bipartite): Changed node/edge colors as requested.
 #
 # ----------------------------------------------------------------------------
 
@@ -24,7 +30,7 @@
 
 # Ensure all packages are installed:
 # install.packages(c("tidyverse", "readxl", "janitor", "bipartite", "igraph", 
-#                    "tidygraph", "ggraph", "ggrepel", "patchwork", "viridis"))
+#                    "tidygraph", "ggraph", "ggrepel", "patchwork", "viridis", "ggnewscale"))
 
 library(tidyverse)
 library(readxl)
@@ -36,6 +42,7 @@ library(ggraph)
 library(ggrepel)
 library(patchwork)
 library(viridis)
+library(ggnewscale)    # *** ADDED for multiple color scales ***
 
 set.seed(123) # for reproducibility
 Sys.setlocale("LC_TIME", "en_US.UTF-8") # Ensure consistent date formatting
@@ -47,11 +54,12 @@ today_date <- format(Sys.Date(), "%d%m%y")
 # ----------------------------------------------------------------------------
 # PART 2: DATA LOADING AND INITIAL CLEANING
 # Read the raw data files.
+# *** UPDATED WITH 081125 DATES & EXACT PATHS ***
 # ----------------------------------------------------------------------------
 
 print("Loading data...")
 
-# Use file paths from the original script
+# Use file paths exactly as provided by user
 localities_raw <- read_excel("data - Santiago2025/Species localities - TDF  - 081125.xlsx")
 traits_raw <- read_excel("data - Santiago2025/Species traits - TDF - 081125.xlsx", sheet = "traits")
 ages_raw <- read_excel("data - Santiago2025/Age localities - TDF  - 081125.xlsx")
@@ -67,11 +75,11 @@ print("Preparing data...")
 # --- Clean Traits Data ---
 traits <- traits_raw %>%
   clean_names() %>%
-  # Handle potential NAs in new columns
+  # *** REVERTED TO STABLE CLEANING LOGIC (from Space&Time_110925.R) ***
   mutate(
+    # This correctly handles 1/NA/blank from read_excel
     facultative_scavenger = ifelse(is.na(facultative_scavenger), 0, facultative_scavenger),
     carrion_only = ifelse(is.na(carrion_only), 0, carrion_only),
-    # Also clean human_resource
     human_resource = ifelse(is.na(human_resource), 0, human_resource)
   ) %>%
   # Calculate log10 body size
@@ -133,7 +141,13 @@ splocs_agg <- localities %>%
   ) %>%
   ungroup() %>%
   # Handle potential NAs in time_bin or region_col if they exist
-  filter(!is.na(time_bin), !is.na(region_col))
+  filter(!is.na(time_bin), !is.na(region_col)) %>%
+  
+  # *** THE KEY FIX ***
+  # Manually add "Homo_sapiens" to every aggregated species list
+  mutate(
+    species_list = map(species_list, ~ unique(c(.x, "Homo_sapiens")))
+  )
 
 print("Data prepared.")
 print(paste(nrow(splocs_agg), "unique aggregated time-bin/region combinations found."))
@@ -168,6 +182,7 @@ print("Stochastic parameter function (get_stochastic_params) loaded.")
 # ----------------------------------------------------------------------------
 # PART 5: RECONSTRUCTION FUNCTION
 # This function reconstructs a single probabilistic network.
+# *** UPDATED TO REMOVE HUMANS AS PREY ***
 # ----------------------------------------------------------------------------
 
 reconstruct_network <- function(sp_traits, model_params, focal_habitat = "Ter-Mar") {
@@ -179,8 +194,13 @@ reconstruct_network <- function(sp_traits, model_params, focal_habitat = "Ter-Ma
     filter(feeding_strategy %in% c("Carnivore", "Omnivore"))
   
   # Resources are Herbivores, Omnivores, AND carrion-only species
+  # *** KEY FIX ***: Added filter to explicitly remove Homo_sapiens from
+  # being a resource.
   resources <- sp_traits %>%
-    filter(feeding_strategy %in% c("Herbivore", "Omnivore") | carrion_only == 1)
+    filter(
+      (feeding_strategy %in% c("Herbivore", "Omnivore") | carrion_only == 1) &
+        trophic_species != "Homo_sapiens"
+    )
   
   # Filter by habitat if specified
   if (focal_habitat != "Ter-Mar") {
@@ -197,6 +217,7 @@ reconstruct_network <- function(sp_traits, model_params, focal_habitat = "Ter-Ma
     filter(consumer_species != resource_species) %>%
     # Join traits
     left_join(consumers %>% select(consumer_species = trophic_species, consumer = feeding_strategy, log10_c = log10_bodysize, habitat_c = feeding_habitat, scav_c = facultative_scavenger), by = "consumer_species") %>%
+    # *** ADDED 'human_r' ***
     left_join(resources %>% select(resource_species = trophic_species, resource = feeding_strategy, log10_r = log10_bodysize, habitat_r = feeding_habitat, carrion_r = carrion_only, human_r = human_resource), by = "resource_species")
   
   if (nrow(all_pairs) == 0) {
@@ -237,18 +258,25 @@ reconstruct_network <- function(sp_traits, model_params, focal_habitat = "Ter-Ma
     # --- *** NEW REVISED MODEL LOGIC *** ---
     
     # Rule 1: Special human scavenging interaction (overrides body mass)
+    # This now correctly checks numeric 1
     if (pair$consumer_species == "Homo_sapiens" && pair$scav_c == 1 && pair$carrion_r == 1) {
       
       prob <- 1.0 # Force this interaction
       
-      # Rule 2: Special human PREDATION interaction (overrides body mass check)
+      # Rule 2: Special human PREDATION interaction (overrides body mass CHECK)
+      # This now correctly checks numeric 1
     } else if (pair$consumer_species == "Homo_sapiens" && pair$human_r == 1) {
       
       # This is human hunting. Ignore mass check and run the model.
-      log_ratio <- pair$log10_c - pair$log10_r
-      # Use Omnivore (O) parameters for humans
-      z <- model_params$alphaO + model_params$betaO * log_ratio + model_params$gammaO * (log_ratio^2)
-      prob <- exp(z) / (1 + exp(z))
+      # Check for NA mass first
+      if (is.na(pair$log10_c) || is.na(pair$log10_r)) {
+        prob <- 0.0
+      } else {
+        log_ratio <- pair$log10_c - pair$log10_r
+        # Use Omnivore (O) parameters for humans
+        z <- model_params$alphaO + model_params$betaO * log_ratio + model_params$gammaO * (log_ratio^2)
+        prob <- exp(z) / (1 + exp(z))
+      }
       
       # Rule 3: Check for missing body size data *before* comparison
     } else if (is.na(pair$log10_c) || is.na(pair$log10_r)) {
@@ -256,6 +284,7 @@ reconstruct_network <- function(sp_traits, model_params, focal_habitat = "Ter-Ma
       prob <- 0.0 # Cannot model interaction if body size is missing
       
       # Rule 4: Standard non-human interaction (falls back to body mass model)
+      # This block is now safe because we've already checked for NAs
     } else if (pair$log10_c > pair$log10_r) {
       
       log_ratio <- pair$log10_c - pair$log10_r
@@ -287,7 +316,8 @@ reconstruct_network <- function(sp_traits, model_params, focal_habitat = "Ter-Ma
   
   # Combine all results
   final_links <- bind_rows(results_list) %>%
-    filter(Int_prob > 0.1) # *** THRESHOLD APPLIED HERE ***
+    # *** KEY CHANGE ***: Reverted to prob > 0, as in old script
+    filter(Int_prob > 0)
   
   return(final_links)
 }
@@ -296,31 +326,33 @@ reconstruct_network <- function(sp_traits, model_params, focal_habitat = "Ter-Ma
 # ----------------------------------------------------------------------------
 # PART 6: METRIC CALCULATION
 # Helper functions to calculate metrics for a single *weighted* network.
+# *** UPDATED TO REFLECT MATRIX TRANSPOSITION AND FUNCTION CALLS ***
 # ----------------------------------------------------------------------------
 
 # Function to calculate network metrics using 'bipartite'
-calculate_metrics <- function(adj_matrix) {
+calculate_metrics <- function(adj_matrix_con_x_res) {
   
-  # NO binarization. Use the raw probability matrix.
+  # The input matrix is (Consumers x Resources)
   
-  # *** IMPORTANT ***: bipartite::networklevel() expects
-  # ROWS = RESOURCES (lower level) and COLS = CONSUMERS (higher level)
-  # The adj_matrix we build is (Consumers x Resources), so we must transpose it
-  adj_matrix_transposed <- t(adj_matrix)
+  # Transpose the matrix for networklevel() and computeModules()
+  adj_matrix_transposed <- t(adj_matrix_con_x_res)
   
-  # Remove empty rows/columns *from the transposed matrix*
-  adj_matrix_weighted <- adj_matrix_transposed[rowSums(adj_matrix_transposed) > 0, , drop = FALSE]
-  adj_matrix_weighted <- adj_matrix_weighted[, colSums(adj_matrix_weighted) > 0, drop = FALSE]
+  # --- Use (Resources x Consumers) matrix for networklevel ---
+  adj_matrix_res_x_con <- adj_matrix_transposed[rowSums(adj_matrix_transposed) > 0, , drop = FALSE]
+  adj_matrix_res_x_con <- adj_matrix_res_x_con[, colSums(adj_matrix_res_x_con) > 0, drop = FALSE]
   
-  # Check if network is too small AFTER filtering empty rows/cols
-  # We need at least 2 resources (rows) and 2 consumers (cols)
-  if (nrow(adj_matrix_weighted) < 2 | ncol(adj_matrix_weighted) < 2) {
-    # This network is too sparse
+  # --- Use (Consumers x Resources) matrix for HL/LL functions ---
+  adj_matrix_hl <- adj_matrix_con_x_res[rowSums(adj_matrix_con_x_res) > 0, , drop = FALSE]
+  adj_matrix_hl <- adj_matrix_hl[, colSums(adj_matrix_hl) > 0, drop = FALSE]
+  
+  # Check if network is too small AFTER filtering
+  # We need at least 2 resources (rows) and 2 consumers (cols) in the Res x Con matrix
+  if (nrow(adj_matrix_res_x_con) < 2 | ncol(adj_matrix_res_x_con) < 2) {
     return(
       tibble(
-        n_consumers = ncol(adj_matrix_weighted), # Note: cols are consumers now
-        n_resources = nrow(adj_matrix_weighted), # Note: rows are resources now
-        n_nodes = nrow(adj_matrix_weighted) + ncol(adj_matrix_weighted),
+        n_consumers = ncol(adj_matrix_res_x_con),
+        n_resources = nrow(adj_matrix_res_x_con),
+        n_nodes = nrow(adj_matrix_res_x_con) + ncol(adj_matrix_res_x_con),
         connectance = NA, links_per_species = NA, 
         weighted_nestedness = NA, modularity = NA, 
         generality = NA, vulnerability = NA
@@ -328,39 +360,49 @@ calculate_metrics <- function(adj_matrix) {
     )
   }
   
-  # Calculate metrics using bipartite
-  # Note: Modularity calculation can sometimes fail
-  mod <- try(computeModules(adj_matrix_weighted), silent = TRUE)
+  # --- Calculate metrics ---
+  
+  # Modularity (requires Resources x Consumers)
+  mod <- try(computeModules(adj_matrix_res_x_con), silent = TRUE)
   mod_value <- if (inherits(mod, "try-error")) NA else mod@likelihood
   
-  # *** CORRECTED METRIC CALLS (as per new vignette) ***
-  # Call networklevel() for all indices it supports as strings
-  metrics <- try(networklevel(
-    adj_matrix_weighted,
-    index = c("connectance", "links per species", "weighted nestedness", "generality", "vulnerability")
+  # networklevel metrics (requires Resources x Consumers)
+  # *** This is the "safe" call from your old script ***
+  metrics_nl <- try(networklevel(
+    adj_matrix_res_x_con,
+    index = c("connectance", "links per species", "weighted nestedness")
   ), silent = TRUE)
   
-  # If the networklevel call fails
-  if (inherits(metrics, "try-error")) {
-    return(
-      tibble(
-        n_consumers = ncol(adj_matrix_weighted), n_resources = nrow(adj_matrix_weighted), n_nodes = nrow(adj_matrix_weighted) + ncol(adj_matrix_weighted),
-        connectance = NA, links_per_species = NA, weighted_nestedness = NA, modularity = mod_value, generality = NA, vulnerability = NA
-      )
-    )
+  # Generality/Vulnerability (requires Consumers x Resources)
+  # *** This is also from your old script ***
+  gen <- try(mean(generality.HL(adj_matrix_hl), na.rm = TRUE), silent = TRUE)
+  vul <- try(mean(vulnerability.LL(adj_matrix_hl), na.rm = TRUE), silent = TRUE)
+  
+  # Handle errors
+  if (inherits(metrics_nl, "try-error")) {
+    connectance_val <- NA
+    links_per_species_val <- NA
+    weighted_nestedness_val <- NA
+  } else {
+    connectance_val <- metrics_nl["connectance"]
+    links_per_species_val <- metrics_nl["links per species"]
+    weighted_nestedness_val <- metrics_nl["weighted nestedness"]
   }
   
-  # Return metrics as a tibble if all successful
+  gen_value <- if (inherits(gen, "try-error") || is.nan(gen)) NA else gen
+  vul_value <- if (inherits(vul, "try-error") || is.nan(vul)) NA else vul
+  
+  # Return metrics as a tibble
   return(tibble(
-    n_consumers = ncol(adj_matrix_weighted),
-    n_resources = nrow(adj_matrix_weighted),
-    n_nodes = nrow(adj_matrix_weighted) + ncol(adj_matrix_weighted),
-    connectance = metrics["connectance"],
-    links_per_species = metrics["links per species"],
-    weighted_nestedness = metrics["weighted nestedness"],
+    n_consumers = ncol(adj_matrix_res_x_con), # Cols are consumers
+    n_resources = nrow(adj_matrix_res_x_con), # Rows are resources
+    n_nodes = nrow(adj_matrix_res_x_con) + ncol(adj_matrix_res_x_con),
+    connectance = connectance_val,
+    links_per_species = links_per_species_val,
+    weighted_nestedness = weighted_nestedness_val,
     modularity = mod_value,
-    generality = metrics["generality"],
-    vulnerability = metrics["vulnerability"]
+    generality = gen_value,
+    vulnerability = vul_value
   ))
 }
 
@@ -368,7 +410,7 @@ calculate_metrics <- function(adj_matrix) {
 # ----------------------------------------------------------------------------
 # PART 7: MAIN ANALYSIS LOOP
 # Run the analysis 'n_reps' times.
-# Loops over aggregated bins, not localities.
+# *** UPDATED TO PASS (Consumers x Resources) MATRIX ***
 # ----------------------------------------------------------------------------
 
 n_reps <- 100 # Number of replicates (set to 100)
@@ -392,7 +434,6 @@ run_analysis <- function(splocs_table, traits) {
       filter(trophic_species %in% species_names)
     
     # Reconstruct the network for this bin
-    # We pass the STOCHASTIC model_params for this replicate
     net_links <- reconstruct_network(sp_traits, model_params, focal_habitat = "Ter-Mar")
     
     # Convert to an adjacency matrix for bipartite
@@ -412,9 +453,10 @@ run_analysis <- function(splocs_table, traits) {
       }
     }
     
-    # Calculate metrics. We pass the TRANSPOSED matrix (t(adj_matrix))
-    # to match the (Resources x Consumers) format required by bipartite.
-    metrics_tibble <- calculate_metrics(t(adj_matrix))
+    # *** KEY CHANGE ***
+    # Calculate metrics. We pass the ORIGINAL (Consumers x Resources) matrix.
+    # The calculate_metrics function will handle transposing as needed.
+    metrics_tibble <- calculate_metrics(adj_matrix)
     
     # Add identifying info and return
     return(
@@ -514,7 +556,6 @@ plot_data_metrics <- final_metrics_all_reps %>%
     metric = factor(metric, levels = c("connectance", "links_per_species", "weighted_nestedness", "modularity", "generality", "vulnerability"))
   ) %>%
   # Remove any NA values that would break plotting
-  # This is why Generality/Vulnerability may be missing for some bins
   filter(!is.na(value))
 
 # --- 3. Create the multi-faceted plot ---
@@ -533,7 +574,7 @@ combined_plot <- ggplot(plot_data_metrics, aes(x = time_bin, y = value)) +
   # Add labels and titles
   labs(
     title = "Tierra del Fuego Aggregated Network Metrics",
-    subtitle = "Boxplots show distribution of 100 stochastic replicates. (Prob > 0.1)",
+    subtitle = "Boxplots show distribution of 100 stochastic replicates. (Prob > 0)",
     x = "Geological Age",
     y = "Metric Value",
     fill = "Region"
@@ -592,6 +633,7 @@ shorten_name <- function(species_name) {
 
 # --- 2. Define color palette ---
 taxa_colors <- c(
+  "Homo_sapiens" = "#33CCFF", # Bright blue for humans
   "Mammalia" = "#7f3b08",
   "Aves" = "#b35806",
   "Actinopterygii" = "#e08214",
@@ -627,16 +669,32 @@ plot_network_bipartite <- function(graph, title) {
   ggraph(layout) +
     
     # Use geom_edge_link for straight lines
-    # Non-human interactions
-    geom_edge_link(aes(alpha = Int_prob, color = Int_prob, filter = !is_human_interaction), width = 0.5) +
-    # Human interactions (plotted on top)
-    geom_edge_link(aes(alpha = Int_prob, filter = is_human_interaction), color = "red", width = 1.0) +
+    # --- UPDATED EDGE COLORS ---
+    # 1. Non-Human interactions (blue-red gradient)
+    geom_edge_link(aes(alpha = Int_prob, color = Int_prob, 
+                       filter = human_link_type == "Non-Human"), 
+                   width = 0.5) +
+    # Set the blue-red gradient for non-human links
+    scale_edge_color_gradient(low = "#3B4CC0", high = "#B40426", name = "Interaction Prob.", limits = c(0,1)) +
+    
+    # *** ADDED ggnewscale ***
+    # This allows a new color scale for the next layers
+    new_scale_edge_color() +
+    
+    # 2. Human PREDATION & SCAVENGING interactions (manual colors)
+    geom_edge_link(aes(color = human_link_type, alpha = Int_prob,
+                       filter = human_link_type != "Non-Human"), 
+                   width = 1.0) +
+    # Set the manual colors for human links
+    scale_edge_color_manual(values = c("Human-Predation" = "red", "Human-Scavenging" = "#8B4513"), 
+                            name = "Human Interaction",
+                            limits = c("Human-Predation", "Human-Scavenging")) +
     
     # Draw nodes
     # Non-human nodes
     geom_node_point(aes(fill = Category, filter = !is_human_node), shape = 21, color = "black", size = 5, stroke = 0.5) +
-    # Human nodes (both consumer and resource)
-    geom_node_point(aes(fill = Category, filter = is_human_node), shape = 21, color = "red", size = 7, stroke = 1.5) +
+    # Human nodes (will be colored by 'Category' = "Homo_sapiens")
+    geom_node_point(aes(fill = Category, filter = is_human_node), shape = 21, color = "black", size = 7, stroke = 1.5) +
     
     # Draw labels
     geom_node_text(aes(label = short_name), repel = TRUE, size = 2.5, max.overlaps = 35, 
@@ -644,7 +702,6 @@ plot_network_bipartite <- function(graph, title) {
     
     # Scales
     scale_fill_manual(values = taxa_colors, name = "Taxonomic Category", na.value = "grey50", limits = names(taxa_colors), drop = FALSE) +
-    scale_edge_color_gradientn(colors = viridis::magma(256, direction = -1, begin = 0.1), name = "Interaction Prob.", limits = c(0.1,1)) +
     scale_edge_alpha(guide = 'none') +
     scale_y_continuous(expand = expansion(mult = 0.4)) + # Add space for labels
     
@@ -652,6 +709,7 @@ plot_network_bipartite <- function(graph, title) {
     theme_graph(base_family = 'sans') +
     theme(
       legend.position = "bottom",
+      legend.box = "vertical",
       plot.margin = unit(c(0.5, 0.5, 0.5, 0.5), "cm"),
       plot.title = element_text(hjust = 0.5, size = 16)
     ) +
@@ -670,23 +728,38 @@ plot_data_prep <- splocs_agg %>%
     # --- *** CRITICAL NEW LOGIC FOR BIPARTITE PLOTS *** ---
     
     # Generate the single representative link list
-    links_df = map(sp_traits, ~reconstruct_network(.x, mean_params) %>%
-                     filter(Int_prob > 0.1) %>% # Filter for prob > 0.1
-                     mutate(
-                       # Create 'from' and 'to' names for the duplicated nodes
-                       from = paste0(Consumer, "_C"), # e.g., "Homo_sapiens_C"
-                       to = paste0(Resource, "_R"),   # e.g., "Lama_guanicoe_R"
-                       # Identify human interactions for special plotting
-                       is_human_interaction = (Consumer == "Homo_sapiens" | Resource == "Homo_sapiens")
-                     )
-    ),
+    links_df = map(sp_traits, function(st) {
+      
+      # Reconstruct the network
+      links <- reconstruct_network(st, mean_params) %>%
+        filter(Int_prob > 0) # Filter for prob > 0
+      
+      # Join with resource traits to identify carrion
+      links_with_traits <- links %>%
+        left_join(st %>% select(trophic_species, carrion_r = carrion_only), 
+                  by = c("Resource" = "trophic_species"))
+      
+      links_with_traits %>%
+        mutate(
+          # Create 'from' and 'to' names for the duplicated nodes
+          from = paste0(Consumer, "_C"), # e.g., "Homo_sapiens_C"
+          to = paste0(Resource, "_R"),   # e.g., "Lama_guanicoe_R"
+          
+          # *** KEY CHANGE ***: Create link type for colors
+          human_link_type = case_when(
+            Consumer == "Homo_sapiens" & carrion_r == 1 ~ "Human-Scavenging",
+            Consumer == "Homo_sapiens" ~ "Human-Predation",
+            TRUE ~ "Non-Human"
+          )
+        )
+    }),
     
     # Create the nodes data frame by duplicating omnivores
     nodes_df = map2(sp_traits, links_df, function(st, links) {
       
       # Define consumer and resource names *from the links*
       consumer_names <- unique(links$Consumer)
-      resource_names <- unique(links$Resource)
+      resource_names <- unique(links$Resource) 
       
       # 1. Create consumer nodes (top layer)
       nodes_C <- st %>%
@@ -707,12 +780,15 @@ plot_data_prep <- splocs_agg %>%
       # 3. Combine them. Omnivores will now appear in both dataframes.
       bind_rows(nodes_C, nodes_R) %>%
         mutate(
-          # Create 'Category' for colors
-          Category = if_else(class %in% names(taxa_colors), class, "Other"),
+          # *** KEY CHANGE ***: Create 'Category' for colors
+          is_human_node = (trophic_species == "Homo_sapiens"),
+          Category = case_when(
+            is_human_node ~ "Homo_sapiens",
+            class %in% names(taxa_colors) ~ class,
+            TRUE ~ "Other"
+          ),
           # Create short names for labels (from original species name)
-          short_name = map_chr(trophic_species, shorten_name),
-          # Identify human nodes
-          is_human_node = (trophic_species == "Homo_sapiens")
+          short_name = map_chr(trophic_species, shorten_name)
         ) %>%
         # Ensure 'name' is the first column for tbl_graph
         select(name, short_name, type, Category, is_human_node, everything()) %>%
@@ -790,7 +866,7 @@ all_interactions_list <- plot_data_prep %>%
     Consumer,
     Resource,
     Int_prob,
-    is_human_interaction
+    human_link_type
   ) %>%
   # Arrange for readability
   arrange(food_web_time, food_web_region, desc(Int_prob))
