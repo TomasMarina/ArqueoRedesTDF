@@ -1,4 +1,4 @@
-# Arqueological food webs in Tierra del Fuego
+# Archeological food webs in Tierra del Fuego
 
 ## Objective
 Reconstruct ancient consumer-resource interactions in Tierra del Fuego.
