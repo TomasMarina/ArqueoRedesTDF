@@ -7,8 +7,6 @@ To reconstruct the archaeological network of predator-prey interactions of north
 Fernando C. Santiago<sup>1</sup>, Ulises Balza<sup>2</sup><sup>,</sup><sup>3</sup> & Tomás I. Marina<sup>1</sup>
 
 
-<sup>1</sup> Centro Austral de Investigaciones Científicas (CADIC-CONICET), Ushuaia, Argentina.
-
+<sup>1</sup> Centro Austral de Investigaciones Científicas (CADIC-CONICET), Ushuaia, Argentina. 
 <sup>2</sup> Instituto de Ciencias Polares, Ambiente y Recursos Naturales, Universidad Nacional de Tierra del Fuego, Antártida e Islas del Atlántico Sur (UNTDF – ICPA), Ushuaia, Argentina.
-
 <sup>3</sup> Fundación Cóndor Andino Ecuador, Quito-Pichincha, Ecuador.
